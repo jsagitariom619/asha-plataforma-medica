@@ -38,7 +38,7 @@ function buildPeriod(kind:PeriodKind,customFrom:string,customTo:string,month:num
     return{start,end,label:new Intl.DateTimeFormat("es-BO",{month:"long",year:"numeric"}).format(start),kind};
   }
   if(kind==="year")return{start:new Date(now.getFullYear(),0,1),end:endOfDay(new Date(now.getFullYear(),11,31)),label:String(now.getFullYear()),kind};
-  if(kind==="custom"&&customFrom&&customTo){const a=parseInputDate(customFrom),b=parseInputDate(customTo);return{start:startOfDay(a<=b?a:b),end:endOfDay(a<=b?b:a),label:`${customFrom} a ${customTo}`,kind}}
+  if(kind==="custom"&&customFrom&&customTo){const a=parseInputDate(customFrom),b=parseInputDate(customTo),forward=a.getTime()<=b.getTime();return{start:startOfDay(forward?a:b),end:endOfDay(forward?b:a),label:`${customFrom} a ${customTo}`,kind}}
   if(kind==="selected-month"){
     const start=new Date(year,month,1),end=endOfDay(new Date(year,month+1,0));
     return{start,end,label:new Intl.DateTimeFormat("es-BO",{month:"long",year:"numeric"}).format(start),kind};
@@ -56,18 +56,18 @@ function previousPeriod(period:Period){
   const end=endOfDay(addDays(period.start,-1));return{start:startOfDay(addDays(end,-days+1)),end};
 }
 
-const inRange=(date:Date|null,start:Date,end:Date)=>!!date&&date>=start&&date<=end;
+const inRange=(date:Date|null,start:Date,end:Date)=>!!date&&date.getTime()>=start.getTime()&&date.getTime()<=end.getTime();
 const validFinancial=(t:Tx)=>t.status!=="Anulado";
 const paidIncome=(t:Tx)=>t.type==="Ingreso"&&t.status!=="Pendiente"&&t.status!=="Anulado";
 
 function sum(rows:Tx[]){return rows.reduce((a,t)=>a+(Number(t.amount)||0),0)}
-function change(current:number,previous:number){if(previous===0)return current===0?null:null;return((current-previous)/Math.abs(previous))*100}
+function change(current:number,previous:number){if(previous===0)return null;return((current-previous)/Math.abs(previous))*100}
 function Change({value,invert=false}:{value:number|null;invert?:boolean}){if(value===null)return <small>Sin datos suficientes para comparar.</small>;const up=value>=0,good=invert?!up:up;return <small className={good?styles.good:styles.bad}>{up?"↑":"↓"} {Math.abs(value).toLocaleString("es-BO",{maximumFractionDigits:1})} % vs período anterior</small>}
 
 function historicalUnitCost(tx:Tx,products:Product[],txs:Tx[]){
   if(typeof tx.unitCost==="number"&&Number.isFinite(tx.unitCost))return tx.unitCost;
   if(typeof tx.costAmount==="number"&&Number(tx.quantity)>0)return tx.costAmount/Number(tx.quantity);
-  const saleDate=txDate(tx),purchases=txs.filter(row=>row.origin==="product-purchase"&&row.productId===tx.productId&&typeof row.unitPrice==="number").map(row=>({row,date:txDate(row)})).filter(item=>!saleDate||!item.date||item.date<=saleDate).sort((a,b)=>(b.date?.getTime()??0)-(a.date?.getTime()??0));
+  const saleDate=txDate(tx),purchases=txs.filter(row=>row.origin==="product-purchase"&&row.productId===tx.productId&&typeof row.unitPrice==="number").map(row=>({row,date:txDate(row)})).filter(item=>!saleDate||!item.date||item.date.getTime()<=saleDate.getTime()).sort((a,b)=>(b.date?.getTime()??0)-(a.date?.getTime()??0));
   if(purchases[0]?.row.unitPrice!==undefined)return Number(purchases[0].row.unitPrice)||0;
   return Number(products.find(p=>p.id===tx.productId)?.purchaseCost)||0;
 }
@@ -102,7 +102,7 @@ export function AccountingPanel({txs,products,services}:{txs:Tx[];products:Produ
   const weeks=useMemo(()=>{
     const result:{label:string;income:number;expenses:number;profit:number;operations:number;units:number}[]=[];
     let cursor=startOfDay(period.start),index=1;
-    while(cursor<=period.end&&index<=54){const end=endOfDay(addDays(cursor,6)>period.end?period.end:addDays(cursor,6)),rows=dated.filter(item=>inRange(item.date,cursor,end)).map(item=>item.tx).filter(validFinancial),inc=sum(rows.filter(paidIncome)),out=sum(rows.filter(t=>t.type==="Egreso"));result.push({label:`Semana ${index}`,income:inc,expenses:out,profit:inc-out,operations:rows.length,units:rows.filter(t=>t.origin==="product-sale"&&paidIncome(t)).reduce((a,t)=>a+(Number(t.quantity)||Math.abs(Number(t.stockDelta))||0),0)});cursor=startOfDay(addDays(end,1));index++}
+    while(cursor.getTime()<=period.end.getTime()&&index<=54){const candidate=addDays(cursor,6),end=endOfDay(candidate.getTime()>period.end.getTime()?period.end:candidate),rows=dated.filter(item=>inRange(item.date,cursor,end)).map(item=>item.tx).filter(validFinancial),inc=sum(rows.filter(paidIncome)),out=sum(rows.filter(t=>t.type==="Egreso"));result.push({label:`Semana ${index}`,income:inc,expenses:out,profit:inc-out,operations:rows.length,units:rows.filter(t=>t.origin==="product-sale"&&paidIncome(t)).reduce((a,t)=>a+(Number(t.quantity)||Math.abs(Number(t.stockDelta))||0),0)});cursor=startOfDay(addDays(end,1));index++}
     return result;
   },[dated,period]);
   const maxChart=Math.max(1,...weeks.flatMap(w=>[w.income,w.expenses]));
