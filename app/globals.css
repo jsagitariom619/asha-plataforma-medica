@@ -44,3 +44,25 @@
 .settings-actions{display:flex;align-items:center;gap:13px}
 .settings-actions span{font-size:11px;color:#47705f;background:#e7f0eb;padding:7px 10px;border-radius:8px}
 @media(max-width:760px){.brand img{width:178px;height:80px}.scrim{background:#0d2d2a99}.settings-grid{grid-template-columns:1fr}.profile b{max-width:165px}}
+
+/* Sidebar structure: fixed brand/profile with independently scrollable modules */
+.sidebar{overflow:hidden;min-height:0}
+.brand{height:106px;flex:none;align-items:center;justify-content:center}
+.brand:before,.brand:after{content:none}
+.brand-lockup{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;line-height:1}
+.brand-lockup strong{font-family:Georgia,"Times New Roman",serif;font-size:40px;font-weight:500;letter-spacing:.13em;color:#173b38}
+.brand-lockup small{font-size:10px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:#9b7f4c}
+.professional-card{width:100%;flex:none;text-align:left;font-family:inherit;cursor:pointer;transition:background-color .18s,box-shadow .18s,transform .18s}
+.professional-card:hover{background:#fff;box-shadow:0 7px 18px rgba(22,75,71,.09);transform:translateY(-1px)}
+.professional-card:focus-visible{outline:3px solid rgba(169,139,84,.35);outline-offset:2px}
+.sidebar nav{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:2px 0 14px;touch-action:pan-y}
+.sidebar nav::-webkit-scrollbar{display:none;width:0;height:0}
+.notifications-wrap{position:relative}
+.notifications-panel{position:absolute;right:0;top:48px;width:280px;padding:20px;background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:0 18px 45px rgba(18,56,52,.16);display:flex;flex-direction:column;align-items:center;text-align:center;z-index:50}
+.notifications-panel>span{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:#e7efec;color:var(--teal);margin-bottom:10px}
+.notifications-panel>span svg{width:19px}
+.notifications-panel b{font-size:13px;color:#183b38}
+.notifications-panel p{font-size:11px;color:#6d7d79;margin:5px 0 14px}
+.notifications-panel>button{border:0;background:transparent;color:var(--teal);font-weight:700;font-size:11px;padding:5px 12px}
+@media(max-height:640px){.brand{height:80px}.brand-lockup strong{font-size:32px}.clinic{margin-bottom:9px}.sidebar nav button{padding-top:8px;padding-bottom:8px}}
+@media(max-width:760px){.brand{height:92px}.brand-lockup strong{font-size:36px}.brand button{position:absolute;right:0;top:30px}.notifications-panel{position:fixed;left:16px;right:16px;top:82px;width:auto}.sidebar nav{padding-bottom:max(18px,env(safe-area-inset-bottom))}}
