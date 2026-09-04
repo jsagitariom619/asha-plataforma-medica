@@ -8,19 +8,21 @@ import {Label} from "@/components/ui/label";
 import {Textarea} from "@/components/ui/textarea";
 import {Dialog,DialogContent,DialogDescription,DialogHeader,DialogTitle} from "@/components/ui/dialog";
 import {CashPanel,MovementsPanel,ProductDialog,ProductsPanel} from "@/app/products";
+import {AccountingPanel} from "@/app/accounting";
 
 type Patient={id:number;name:string;code:string;age:number;phone:string;lastVisit:string;status:string};
-type Service={id:number;name:string;category:string;price:number;duration:string;active:boolean};
+export type Service={id:number;name:string;category:string;price:number;duration:string;active:boolean};
 export type Product={id:number;name:string;description:string;salePrice:number;purchaseCost:number;initialStock:number;stock:number;image?:string;active:boolean;category?:string;code?:string;minimumStock?:number};
-export type Tx={id:number;concept:string;reference:string;type:"Ingreso"|"Egreso";amount:number;date:string;method:string;status?:"Pagado"|"Pendiente"|"Anulado";origin?:"manual"|"cash"|"product-sale"|"product-purchase";operationId?:string;productId?:number;productName?:string;quantity?:number;stockDelta?:number;unitPrice?:number;note?:string};
+export type Tx={id:number;concept:string;reference:string;type:"Ingreso"|"Egreso";amount:number;date:string;method:string;status?:"Pagado"|"Pendiente"|"Anulado";origin?:"manual"|"cash"|"product-sale"|"product-purchase";operationId?:string;productId?:number;productName?:string;quantity?:number;stockDelta?:number;unitPrice?:number;unitCost?:number;costAmount?:number;category?:string;createdAt?:string;note?:string};
 type User={id:number;name:string;role:string;initials:string;active:boolean;email?:string;permissions?:string[];username?:string;passwordHash?:string;passwordSalt?:string};
 type ProductAction={kind:"new"|"edit"|"sell"|"restock"|"detail";product?:Product}|null;
 type UserAction={kind:"edit"|"permissions";user:User}|null;
 
-const MODULES=["Resumen","Pacientes","Historias clínicas","Agenda","Servicios","Productos","Caja y cobros","Movimientos","Usuarios","Configuración"];
+const MODULES=["Resumen","Pacientes","Historias clínicas","Agenda","Servicios","Productos","Caja y cobros","Movimientos","Contabilidad","Usuarios","Configuración"];
+const NON_ACCOUNTING_MODULES=MODULES.filter(module=>module!=="Contabilidad");
 const SESSION_KEY="asha-session";
 const defaultPermissions=(role:string)=>{
-  if(role.includes("Admin"))return [...MODULES];
+  if(role.includes("Admin"))return [...NON_ACCOUNTING_MODULES];
   if(role.includes("Recepción"))return ["Resumen","Pacientes","Agenda","Productos","Caja y cobros"];
   if(role.includes("Médico"))return ["Resumen","Pacientes","Historias clínicas","Agenda","Servicios"];
   if(role.includes("Enfermería"))return ["Resumen","Pacientes","Agenda","Servicios"];
@@ -52,7 +54,7 @@ const U:User[]=[
   {id:2,name:"Lic. Paula Méndez",role:"Recepción y caja",initials:"PM",active:true,permissions:defaultPermissions("Recepción y caja")},
   {id:3,name:"Dr. Marco Salinas",role:"Médico",initials:"MS",active:true,permissions:defaultPermissions("Médico")}
 ];
-const nav=[["Resumen",LayoutDashboard],["Pacientes",Users],["Historias clínicas",FileHeart],["Agenda",CalendarDays],["Servicios",Stethoscope],["Productos",PackageOpen],["Caja y cobros",WalletCards],["Movimientos",CircleDollarSign],["Usuarios",Users],["Configuración",Settings]] as const;
+const nav=[["Resumen",LayoutDashboard],["Pacientes",Users],["Historias clínicas",FileHeart],["Agenda",CalendarDays],["Servicios",Stethoscope],["Productos",PackageOpen],["Caja y cobros",WalletCards],["Movimientos",CircleDollarSign],["Contabilidad",Banknote],["Usuarios",Users],["Configuración",Settings]] as const;
 
 export const money=(n:number)=>new Intl.NumberFormat("es-BO",{style:"currency",currency:"BOB",maximumFractionDigits:0}).format(n);
 const nowLabel=()=>new Intl.DateTimeFormat("es-BO",{dateStyle:"short",timeStyle:"short"}).format(new Date());
@@ -89,8 +91,8 @@ export default function Home(){
 
   const notify=(message:string)=>{setFlash(message);setTimeout(()=>setFlash(""),2800)};
   const saveProduct=(product:Product)=>{setProducts(current=>current.some(p=>p.id===product.id)?current.map(p=>p.id===product.id?product:p):[product,...current]);notify(productAction?.kind==="edit"?"Producto actualizado":"Producto guardado");setProductAction(null)};
-  const sellProduct=(product:Product,quantity:number,client:string,method:string,note:string)=>{if(quantity<1||quantity>product.stock)return false;const amount=product.salePrice*quantity,operationId=`PV-${Date.now()}`;setProducts(current=>current.map(p=>p.id===product.id?{...p,stock:p.stock-quantity}:p));setTxs(current=>[{id:Date.now(),concept:"Venta de producto",reference:client||product.name,type:"Ingreso",amount,date:nowLabel(),method,status:"Pagado",origin:"product-sale",operationId,productId:product.id,productName:product.name,quantity,stockDelta:-quantity,unitPrice:product.salePrice,note},...current]);notify(`Venta registrada: ${money(amount)}`);setProductAction(null);return true};
-  const restockProduct=(product:Product,quantity:number,cost:number,provider:string,note:string)=>{if(quantity<1||cost<0)return;const amount=cost*quantity,operationId=`PC-${Date.now()}`;setProducts(current=>current.map(p=>p.id===product.id?{...p,stock:p.stock+quantity,purchaseCost:cost||p.purchaseCost}:p));setTxs(current=>[{id:Date.now(),concept:"Compra de productos",reference:provider||product.name,type:"Egreso",amount,date:nowLabel(),method:"Compra",origin:"product-purchase",operationId,productId:product.id,productName:product.name,quantity,stockDelta:quantity,unitPrice:cost,note},...current]);notify(`Ingreso registrado: +${quantity} unidades`);setProductAction(null)};
+  const sellProduct=(product:Product,quantity:number,client:string,method:string,note:string)=>{if(quantity<1||quantity>product.stock)return false;const amount=product.salePrice*quantity,operationId=`PV-${Date.now()}`;setProducts(current=>current.map(p=>p.id===product.id?{...p,stock:p.stock-quantity}:p));setTxs(current=>[{id:Date.now(),concept:"Venta de producto",reference:client||product.name,type:"Ingreso",amount,date:nowLabel(),createdAt:new Date().toISOString(),method,status:"Pagado",origin:"product-sale",operationId,productId:product.id,productName:product.name,quantity,stockDelta:-quantity,unitPrice:product.salePrice,unitCost:product.purchaseCost,note},...current]);notify(`Venta registrada: ${money(amount)}`);setProductAction(null);return true};
+  const restockProduct=(product:Product,quantity:number,cost:number,provider:string,note:string)=>{if(quantity<1||cost<0)return;const amount=cost*quantity,operationId=`PC-${Date.now()}`;setProducts(current=>current.map(p=>p.id===product.id?{...p,stock:p.stock+quantity,purchaseCost:cost||p.purchaseCost}:p));setTxs(current=>[{id:Date.now(),concept:"Compra de productos",reference:provider||product.name,type:"Egreso",amount,date:nowLabel(),createdAt:new Date().toISOString(),method:"Compra",origin:"product-purchase",operationId,productId:product.id,productName:product.name,quantity,stockDelta:quantity,unitPrice:cost,note},...current]);notify(`Ingreso registrado: +${quantity} unidades`);setProductAction(null)};
   const saveUser=(updated:User)=>{setUsers(current=>current.map(u=>u.id===updated.id?updated:u));if(primaryUserId===updated.id&&updated.name!==professionalName)setProfessionalName(updated.name);notify("Usuario actualizado correctamente");setUserAction(null)};
   const savePermissions=(userId:number,permissions:string[])=>{setUsers(current=>current.map(u=>u.id===userId?{...u,permissions:u.id===primaryUserId?[...MODULES]:permissions}:u));notify("Permisos actualizados correctamente");setUserAction(null)};
   const go=(s:string)=>{if(!canAccess(s))return;setSection(s);setMenu(false);setNotificationsOpen(false)};
@@ -144,6 +146,7 @@ export default function Home(){
         {section==="Productos"&&<><SectionLead text="Catálogo físico, existencias, compras y ventas"/><ProductsPanel products={filteredProducts} query={productQuery} setQuery={setProductQuery} filter={productFilter} setFilter={setProductFilter} action={setProductAction}/></>}
         {section==="Caja y cobros"&&<><SectionLead text="Cobros, pendientes, medios de pago y caja operativa"/><CashPanel txs={txs}/></>}
         {section==="Movimientos"&&<><SectionLead text="Trazabilidad general de ingresos, egresos y productos"/><MovementsPanel txs={txs} income={income} expenses={expenses}/></>}
+        {section==="Contabilidad"&&<AccountingPanel txs={txs} products={products} services={services}/>} 
         {section==="Usuarios"&&<><SectionLead text="Roles y permisos de acceso"/><div className="cards">{users.map((u,index)=><article className="panel user" key={u.id}><span className="big-avatar">{userInitials(u.name)}</span><h3>{index===0?professionalName:u.name}</h3><p>{u.role}</p><span className={u.active?"tag":"tag inactive"}>{u.active?"Activo":"Inactivo"}</span>{u.username?<small className="credential-state">Usuario: {u.username}</small>:<small className="credential-state pending">Credenciales pendientes</small>}<div className="user-actions"><Button variant="outline" onClick={()=>setUserAction({kind:"edit",user:u})}>Editar usuario</Button><Button variant="outline" onClick={()=>setUserAction({kind:"permissions",user:u})}>Gestionar permisos</Button></div></article>)}</div></>}
         {section==="Configuración"&&<><SectionLead text="Datos generales del consultorio y del profesional"/><SettingsPanel professionalName={professionalName} onSave={setProfessionalName}/></>}
       </div>
@@ -184,11 +187,11 @@ function UserDialog({action,users,primaryUserId,close,saveUser,savePermissions}:
 function Entry({type,close,patients,users,addPatient,addService,addTx,addUser}:{type:string|null;close:()=>void;patients:Patient[];users:User[];addPatient:(p:Patient)=>void;addService:(s:Service)=>void;addTx:(t:Tx)=>void;addUser:(u:User)=>void}){
   const[error,setError]=useState("");
   useEffect(()=>{setError("")},[type]);
-  const submit=async(e:FormEvent<HTMLFormElement>)=>{e.preventDefault();setError("");const f=new FormData(e.currentTarget),id=Date.now();
+  const submit=async(e:FormEvent<HTMLFormElement>)=>{e.preventDefault();setError("");const f=new FormData(e.currentTarget),id=Date.now(),createdAt=new Date().toISOString();
     if(type==="patient")addPatient({id,name:String(f.get("name")),code:`HC-2026-${149+patients.length}`,age:Number(f.get("age")),phone:String(f.get("phone")),lastVisit:"Sin consultas",status:"Nuevo"});
     if(type==="service")addService({id,name:String(f.get("name")),category:String(f.get("category")),price:Number(f.get("amount")),duration:String(f.get("duration")),active:true});
-    if(type==="cash")addTx({id,concept:String(f.get("concept")),reference:String(f.get("reference")),type:"Ingreso",amount:Number(f.get("amount")),date:nowLabel(),method:String(f.get("method")),status:String(f.get("status")) as Tx["status"],origin:"cash"});
-    if(type==="transaction")addTx({id,concept:String(f.get("concept")),reference:String(f.get("reference")),type:String(f.get("movement")) as "Ingreso"|"Egreso",amount:Number(f.get("amount")),date:nowLabel(),method:String(f.get("method")),status:String(f.get("movement"))==="Ingreso"?"Pagado":undefined,origin:"manual"});
+    if(type==="cash")addTx({id,concept:String(f.get("concept")),reference:String(f.get("reference")),type:"Ingreso",amount:Number(f.get("amount")),date:nowLabel(),createdAt,method:String(f.get("method")),status:String(f.get("status")) as Tx["status"],origin:"cash"});
+    if(type==="transaction")addTx({id,concept:String(f.get("concept")),reference:String(f.get("reference")),type:String(f.get("movement")) as "Ingreso"|"Egreso",amount:Number(f.get("amount")),date:nowLabel(),createdAt,method:String(f.get("method")),status:String(f.get("movement"))==="Ingreso"?"Pagado":undefined,origin:"manual"});
     if(type==="user"){const n=String(f.get("name")),role=String(f.get("role")),username=normalizeUsername(String(f.get("username"))),password=String(f.get("password")),confirm=String(f.get("confirm"));if(users.some(u=>normalizeUsername(u.username||"")===username)){setError("Este nombre de usuario ya está en uso.");return}if(password.length<6){setError("La contraseña debe tener al menos 6 caracteres.");return}if(password!==confirm){setError("Las contraseñas no coinciden.");return}const passwordSalt=randomSalt(),passwordHash=await hashPassword(password,passwordSalt);addUser({id,name:n,role,email:String(f.get("email")||""),username,passwordHash,passwordSalt,initials:userInitials(n),active:String(f.get("active"))!=="false",permissions:defaultPermissions(role)})}
     close()
   };
