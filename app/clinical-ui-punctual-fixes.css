@@ -1,0 +1,88 @@
+/* Correcciones puntuales solicitadas: acciones de historias clínicas y footer del expediente. */
+article.record>.asha-record-edit-action,
+article.record>.asha-record-evolution-action{
+  width:100%;
+  min-height:40px;
+  height:auto;
+  border-radius:9px;
+  padding:9px 12px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  text-align:center;
+  white-space:normal;
+  line-height:1.25;
+}
+article.record>.asha-record-edit-action{
+  margin:0 0 8px;
+  border:1px solid #bfd0ca;
+  background:#fff;
+  color:var(--teal);
+}
+article.record>.asha-record-edit-action:hover{
+  background:#eef4f1;
+  border-color:#9eb7af;
+}
+article.record>.asha-record-evolution-action{
+  margin:0;
+  border:1px solid var(--teal);
+  background:var(--teal);
+  color:#fff;
+}
+article.record>.asha-record-evolution-action:hover{
+  background:var(--teal-dark);
+  border-color:var(--teal-dark);
+  color:#fff;
+}
+
+.patient-profile-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:9px;
+  flex-wrap:nowrap;
+}
+.patient-profile-actions>.patient-secondary,
+.patient-profile-actions>.patient-treatment,
+.patient-profile-actions>.patient-primary{
+  min-height:40px;
+  height:40px;
+  margin:0;
+  padding:0 15px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  vertical-align:middle;
+  line-height:1;
+  white-space:nowrap;
+  flex:0 0 auto;
+}
+.patient-profile-actions>.patient-treatment svg,
+.patient-profile-actions>.patient-primary svg{
+  flex:none;
+  margin:0;
+}
+
+@media(max-width:760px){
+  article.record>.asha-record-edit-action,
+  article.record>.asha-record-evolution-action{
+    width:100%;
+  }
+  .patient-profile-actions{
+    flex-direction:column;
+    align-items:stretch;
+    flex-wrap:nowrap;
+    gap:8px;
+  }
+  .patient-profile-actions>.patient-treatment,
+  .patient-profile-actions>.patient-primary,
+  .patient-profile-actions>.patient-secondary{
+    width:100%;
+    min-width:0;
+    flex:none;
+  }
+  .patient-profile-actions>.patient-treatment{order:1}
+  .patient-profile-actions>.patient-primary{order:2}
+  .patient-profile-actions>.patient-secondary{order:3}
+}
