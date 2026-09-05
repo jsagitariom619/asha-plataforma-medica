@@ -65,6 +65,21 @@ function unwrapAuthUser(value: Record<string, unknown>) {
     : value;
 }
 
+function safeAuthReason(detail: Record<string, unknown>) {
+  const code =
+    typeof detail.error_code === "string" ? detail.error_code :
+    typeof detail.code === "string" ? detail.code :
+    typeof detail.error === "string" ? detail.error :
+    "auth_rejected";
+  const message =
+    typeof detail.msg === "string" ? detail.msg :
+    typeof detail.message === "string" ? detail.message :
+    typeof detail.error_description === "string" ? detail.error_description :
+    "";
+  const clean = message.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 160);
+  return clean ? `${code}: ${clean}` : code;
+}
+
 async function verifyCredentials(userId: string, username: string, internalPassword: string) {
   const authUserResponse = await supabaseAdminFetch(
     `/auth/v1/admin/users/${encodeURIComponent(userId)}`,
@@ -84,12 +99,7 @@ async function verifyCredentials(userId: string, username: string, internalPassw
   });
   if (!tokenResponse.ok) {
     const detail = await readJsonSafe(tokenResponse);
-    const code = typeof detail.error_code === "string"
-      ? detail.error_code
-      : typeof detail.code === "string"
-        ? detail.code
-        : "auth_rejected";
-    return { ok: false, reason: `Supabase Auth rechazó ${username} (${code}).` };
+    return { ok: false, reason: `Supabase Auth rechazó ${username} (${safeAuthReason(detail)}).` };
   }
   return { ok: true };
 }
