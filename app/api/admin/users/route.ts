@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   ASHA_MODULES,
+  deriveInternalPassword,
   initialsFromName,
   normalizeUsername,
   readJsonSafe,
@@ -117,11 +118,12 @@ export async function POST(request: Request) {
     }
 
     const internalEmail = `${username}@asha.invalid`;
+    const internalPassword = deriveInternalPassword(username, pin);
     const createResponse = await supabaseAdminFetch("/auth/v1/admin/users", {
       method: "POST",
       body: JSON.stringify({
         email: internalEmail,
-        password: pin,
+        password: internalPassword,
         email_confirm: true,
         user_metadata: {
           asha_internal_user: true,
