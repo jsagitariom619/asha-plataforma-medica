@@ -65,6 +65,18 @@ async function deleteAuthUser(userId: string) {
   }
 }
 
+async function rollbackCreatedUser(userId: string) {
+  try {
+    await supabaseAdminFetch(
+      `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`,
+      { method: "DELETE" },
+    );
+  } catch {
+    // Best-effort rollback only.
+  }
+  await deleteAuthUser(userId);
+}
+
 export async function POST(request: Request) {
   let createdUserId = "";
 
@@ -85,10 +97,8 @@ export async function POST(request: Request) {
     const pin = typeof body.pin === "string" ? body.pin.trim() : "";
     const role = typeof body.role === "string" ? body.role.trim() : "Usuario";
     const active = body.active !== false;
-    const isPrimaryAdmin = body.isPrimaryAdmin === true;
-    const permissions = isPrimaryAdmin
-      ? [...ASHA_MODULES]
-      : sanitizePermissions(body.permissions);
+    const isPrimaryAdmin = false;
+    const permissions = sanitizePermissions(body.permissions);
 
     if (fullName.length < 3 || fullName.length > 120) {
       return responseError("El nombre del usuario no es válido.");
@@ -188,7 +198,7 @@ export async function POST(request: Request) {
       if (!permissionsResponse.ok) {
         const details = await readJsonSafe(permissionsResponse);
         console.error("ASHA create permissions failed", details);
-        await deleteAuthUser(createdUserId);
+        await rollbackCreatedUser(createdUserId);
         return responseError("No se pudieron asignar los permisos del usuario.", 502);
       }
     }
@@ -210,7 +220,7 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     console.error("ASHA admin user creation error", error);
-    if (createdUserId) await deleteAuthUser(createdUserId);
+    if (createdUserId) await rollbackCreatedUser(createdUserId);
     return responseError("No se pudo completar la creación del usuario.", 503);
   }
 }
