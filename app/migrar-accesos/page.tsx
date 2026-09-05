@@ -73,8 +73,8 @@ export default function MigrateLocalAccessPage() {
         return;
       }
       const created = Array.isArray(data.results) ? data.results.filter((item: any) => item?.status === "created").length : 0;
-      const existing = Array.isArray(data.results) ? data.results.filter((item: any) => item?.status === "existing").length : 0;
-      setStatus(`Migración completada. Nuevos: ${created}. Ya existentes: ${existing}. Ahora prueba el acceso desde otro dispositivo.`);
+      const updated = Array.isArray(data.results) ? data.results.filter((item: any) => item?.status === "updated").length : 0;
+      setStatus(`Migración completada. Nuevos: ${created}. Actualizados: ${updated}. Las credenciales ya quedaron sincronizadas con Supabase. Ahora prueba el acceso desde otro dispositivo.`);
     } catch {
       setStatus("No se pudo conectar con el servidor de ASHA.");
     } finally {
@@ -86,7 +86,7 @@ export default function MigrateLocalAccessPage() {
     <main style={{ minHeight: "100vh", background: "#f5f2ec", padding: "32px 16px", fontFamily: "Arial, sans-serif" }}>
       <section style={{ maxWidth: 760, margin: "0 auto", background: "white", borderRadius: 18, padding: 24, boxShadow: "0 12px 30px rgba(0,0,0,.08)" }}>
         <h1 style={{ marginTop: 0 }}>Migrar accesos locales a Supabase</h1>
-        <p>Esta pantalla copia únicamente los usuarios y permisos locales al acceso cloud de ASHA. No borra ningún dato local.</p>
+        <p>Esta pantalla copia y sincroniza únicamente los usuarios, permisos y credenciales locales con el acceso cloud de ASHA. No borra ningún dato local.</p>
         {rows.length === 0 ? (
           <p><strong>No se encontraron usuarios locales en este dispositivo.</strong> Abre esta pantalla desde la computadora donde ASHA funcionaba originalmente.</p>
         ) : (
@@ -117,7 +117,7 @@ export default function MigrateLocalAccessPage() {
 
             {status && <p style={{ padding: 12, background: "#f3f0e9", borderRadius: 8 }}>{status}</p>}
             <button disabled={busy} type="submit" style={{ width: "100%", padding: 14, border: 0, borderRadius: 10, background: "#0e5a4f", color: "white", fontWeight: 700 }}>
-              {busy ? "Migrando…" : "Migrar accesos a Supabase"}
+              {busy ? "Sincronizando…" : "Migrar accesos a Supabase"}
             </button>
           </form>
         )}
