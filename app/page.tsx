@@ -17,7 +17,7 @@ export type Tx={id:number;concept:string;reference:string;type:"Ingreso"|"Egreso
 type User={id:number;name:string;role:string;initials:string;active:boolean;email?:string;permissions?:string[];username?:string;passwordHash?:string;passwordSalt?:string};
 type ProductAction={kind:"new"|"edit"|"sell"|"restock"|"detail";product?:Product}|null;
 type UserAction={kind:"edit"|"permissions";user:User}|null;
-type CloudUser={id:string;username:string;fullName:string;role:string;isPrimaryAdmin:boolean};
+type CloudUser={id:string;username:string;fullName:string;role:string;isPrimaryAdmin:boolean;permissions?:string[]};
 type CloudSession={accessToken:string;refreshToken:string;expiresIn?:number;tokenType?:string};
 type StoredSession={userId?:number;accessToken?:string;refreshToken?:string;expiresAt?:number;cloudUser?:CloudUser};
 type NewUserPayload={fullName:string;username:string;pin:string;role:string;active:boolean;permissions:string[]};
@@ -64,7 +64,7 @@ const nav=[["Resumen",LayoutDashboard],["Pacientes",Users],["Historias clínicas
 export const money=(n:number)=>new Intl.NumberFormat("es-BO",{style:"currency",currency:"BOB",maximumFractionDigits:0}).format(n);
 const nowLabel=()=>new Intl.DateTimeFormat("es-BO",{dateStyle:"short",timeStyle:"short"}).format(new Date());
 const todayLabel=()=>{const value=new Intl.DateTimeFormat("es-BO",{weekday:"long",day:"numeric",month:"long"}).format(new Date());return value.charAt(0).toUpperCase()+value.slice(1)};
-const mergeCloudUser=(source:User[],cloudUser:CloudUser)=>{const matchIndex=cloudUser.isPrimaryAdmin?0:source.findIndex(user=>normalizeUsername(user.username||"")===normalizeUsername(cloudUser.username));const nextId=Math.max(0,...source.map(user=>user.id))+1;const base=matchIndex>=0?source[matchIndex]:{id:nextId,name:cloudUser.fullName,role:cloudUser.role,initials:userInitials(cloudUser.fullName),active:true,permissions:defaultPermissions(cloudUser.role)};const merged:User={...base,name:cloudUser.fullName,role:cloudUser.role,initials:userInitials(cloudUser.fullName),active:true,username:normalizeUsername(cloudUser.username),permissions:cloudUser.isPrimaryAdmin?[...MODULES]:(base.permissions??defaultPermissions(cloudUser.role))};const users=matchIndex>=0?source.map((user,index)=>index===matchIndex?merged:user):[...source,merged];return{users,userId:merged.id}};
+const mergeCloudUser=(source:User[],cloudUser:CloudUser)=>{const matchIndex=cloudUser.isPrimaryAdmin?0:source.findIndex(user=>normalizeUsername(user.username||"")===normalizeUsername(cloudUser.username));const nextId=Math.max(0,...source.map(user=>user.id))+1;const base=matchIndex>=0?source[matchIndex]:{id:nextId,name:cloudUser.fullName,role:cloudUser.role,initials:userInitials(cloudUser.fullName),active:true,permissions:defaultPermissions(cloudUser.role)};const cloudPermissions=Array.isArray(cloudUser.permissions)?MODULES.filter(module=>cloudUser.permissions?.includes(module)):null;const merged:User={...base,name:cloudUser.fullName,role:cloudUser.role,initials:userInitials(cloudUser.fullName),active:true,username:normalizeUsername(cloudUser.username),permissions:cloudUser.isPrimaryAdmin?[...MODULES]:(cloudPermissions??base.permissions??defaultPermissions(cloudUser.role))};const users=matchIndex>=0?source.map((user,index)=>index===matchIndex?merged:user):[...source,merged];return{users,userId:merged.id}};
 
 export default function Home(){
   const[section,setSection]=useState("Resumen"),[menu,setMenu]=useState(false),[modal,setModal]=useState<string|null>(null),[notificationsOpen,setNotificationsOpen]=useState(false),[patients,setPatients]=useState(P),[services,setServices]=useState(S),[products,setProducts]=useState<Product[]>([]),[txs,setTxs]=useState(T),[users,setUsers]=useState(U),[q,setQ]=useState("");
@@ -118,7 +118,7 @@ export default function Home(){
     if(section==="Productos")return{label:"Nuevo producto",run:()=>setProductAction({kind:"new"})};
     if(section==="Caja y cobros")return{label:"Registrar cobro",run:()=>setModal("cash")};
     if(section==="Movimientos")return{label:"Nuevo movimiento",run:()=>setModal("transaction")};
-    if(section==="Usuarios")return{label:"Agregar usuario",run:()=>setModal("user")};
+    if(section==="Usuarios"&&isPrimary)return{label:"Agregar usuario",run:()=>setModal("user")};
     return null;
   })();
 
