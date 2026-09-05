@@ -36,9 +36,7 @@ export async function POST(request: Request) {
       `/rest/v1/profiles?select=id,username,full_name,role,is_active,is_primary_admin&username=eq.${encodeURIComponent(username)}&limit=1`,
       { headers: { Accept: "application/json" } },
     );
-    if (!profileResponse.ok) {
-      return fail("No se pudo validar el acceso.", 503);
-    }
+    if (!profileResponse.ok) return fail("No se pudo validar el acceso.", 503);
 
     const profiles = (await profileResponse.json()) as Array<{
       id: string;
@@ -49,7 +47,6 @@ export async function POST(request: Request) {
       is_primary_admin: boolean;
     }>;
     const profile = profiles[0];
-
     if (!profile || profile.is_active !== true) {
       return fail("Usuario o PIN/contraseña incorrectos.", 401);
     }
@@ -58,9 +55,7 @@ export async function POST(request: Request) {
       `/auth/v1/admin/users/${encodeURIComponent(profile.id)}`,
       { headers: { Accept: "application/json" } },
     );
-    if (!authUserResponse.ok) {
-      return fail("Usuario o PIN/contraseña incorrectos.", 401);
-    }
+    if (!authUserResponse.ok) return fail("Usuario o PIN/contraseña incorrectos.", 401);
 
     const authUser = await readJsonSafe(authUserResponse);
     const email = typeof authUser.email === "string" ? authUser.email : "";
@@ -69,10 +64,7 @@ export async function POST(request: Request) {
         ? (authUser.user_metadata as Record<string, unknown>)
         : {};
     const isInternalUser = metadata.asha_internal_user === true;
-
-    if (!email) {
-      return fail("Usuario o PIN/contraseña incorrectos.", 401);
-    }
+    if (!email) return fail("Usuario o PIN/contraseña incorrectos.", 401);
 
     const password = isInternalUser
       ? deriveInternalPassword(username, providedSecret)
@@ -85,9 +77,18 @@ export async function POST(request: Request) {
         body: JSON.stringify({ email, password }),
       },
     );
+    if (!tokenResponse.ok) return fail("Usuario o PIN/contraseña incorrectos.", 401);
 
-    if (!tokenResponse.ok) {
-      return fail("Usuario o PIN/contraseña incorrectos.", 401);
+    let permissions: string[] = [];
+    const permissionResponse = await supabaseAdminFetch(
+      `/rest/v1/user_permissions?select=module,allowed&user_id=eq.${encodeURIComponent(profile.id)}&allowed=eq.true`,
+      { headers: { Accept: "application/json" } },
+    );
+    if (permissionResponse.ok) {
+      const rows = (await permissionResponse.json()) as Array<{ module?: string; allowed?: boolean }>;
+      permissions = rows
+        .filter(row => row.allowed === true && typeof row.module === "string")
+        .map(row => String(row.module));
     }
 
     const session = await readJsonSafe(tokenResponse);
@@ -106,6 +107,7 @@ export async function POST(request: Request) {
           fullName: profile.full_name,
           role: profile.role,
           isPrimaryAdmin: profile.is_primary_admin,
+          permissions,
         },
       },
       { headers: { "Cache-Control": "no-store" } },
