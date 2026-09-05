@@ -21,10 +21,14 @@ export async function POST(request: Request) {
     const username = normalizeUsername(
       typeof body.username === "string" ? body.username : "",
     );
-    const pin = typeof body.pin === "string" ? body.pin.trim() : "";
+    const secret = typeof body.pin === "string" ? body.pin.trim() : "";
 
-    if (!/^[a-z0-9._-]{3,40}$/.test(username) || !/^\d{6}$/.test(pin)) {
-      return fail("Usuario o PIN incorrectos.", 401);
+    if (
+      !/^[a-z0-9._-]{3,40}$/.test(username) ||
+      secret.length < 6 ||
+      secret.length > 72
+    ) {
+      return fail("Usuario o PIN/contraseña incorrectos.", 401);
     }
 
     const profileResponse = await supabaseAdminFetch(
@@ -46,7 +50,7 @@ export async function POST(request: Request) {
     const profile = profiles[0];
 
     if (!profile || profile.is_active !== true) {
-      return fail("Usuario o PIN incorrectos.", 401);
+      return fail("Usuario o PIN/contraseña incorrectos.", 401);
     }
 
     const authUserResponse = await supabaseAdminFetch(
@@ -54,25 +58,25 @@ export async function POST(request: Request) {
       { headers: { Accept: "application/json" } },
     );
     if (!authUserResponse.ok) {
-      return fail("Usuario o PIN incorrectos.", 401);
+      return fail("Usuario o PIN/contraseña incorrectos.", 401);
     }
 
     const authUser = await readJsonSafe(authUserResponse);
     const email = typeof authUser.email === "string" ? authUser.email : "";
     if (!email) {
-      return fail("Usuario o PIN incorrectos.", 401);
+      return fail("Usuario o PIN/contraseña incorrectos.", 401);
     }
 
     const tokenResponse = await supabaseAuthFetch(
       "/auth/v1/token?grant_type=password",
       {
         method: "POST",
-        body: JSON.stringify({ email, password: pin }),
+        body: JSON.stringify({ email, password: secret }),
       },
     );
 
     if (!tokenResponse.ok) {
-      return fail("Usuario o PIN incorrectos.", 401);
+      return fail("Usuario o PIN/contraseña incorrectos.", 401);
     }
 
     const session = await readJsonSafe(tokenResponse);
