@@ -35,7 +35,7 @@ export function PatientProfileCompat(){
   })),[histories]);
   if(!patient)return null;
   const active=treatmentSummary.find(item=>item.nextControl)||treatmentSummary[0];
-  const openEvolution=()=>{window.dispatchEvent(new CustomEvent("asha-open-aesthetic-history",{detail:{patient:patient.name,mode:"evolution"}}));setPatient(null)};
+  const openEvolution=()=>{const article=document.createElement("article"),title=document.createElement("h3"),button=document.createElement("button");article.style.display="none";title.textContent=patient.name;button.type="button";button.textContent="Registrar evolución";article.append(title,button);document.body.appendChild(article);setPatient(null);button.click();article.remove()};
 
   return <div className="patient-profile-layer" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setPatient(null)}}>
     <section className="patient-profile-dialog" role="dialog" aria-modal="true" aria-labelledby="patient-profile-title">
