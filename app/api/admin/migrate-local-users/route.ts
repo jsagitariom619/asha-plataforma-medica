@@ -7,6 +7,7 @@ import {
   normalizeUsername,
   sanitizePermissions,
   supabaseAdminFetch,
+  supabaseAuthFetch,
   readJsonSafe,
 } from "@/lib/supabase/server-rest";
 
@@ -58,6 +59,41 @@ async function replacePermissions(userId: string, permissions: string[]) {
   return permissionResponse.ok;
 }
 
+function unwrapAuthUser(value: Record<string, unknown>) {
+  return value.user && typeof value.user === "object"
+    ? (value.user as Record<string, unknown>)
+    : value;
+}
+
+async function verifyCredentials(userId: string, username: string, internalPassword: string) {
+  const authUserResponse = await supabaseAdminFetch(
+    `/auth/v1/admin/users/${encodeURIComponent(userId)}`,
+    { headers: { Accept: "application/json" } },
+  );
+  if (!authUserResponse.ok) {
+    return { ok: false, reason: "No se pudo leer la identidad Auth después de actualizarla." };
+  }
+  const authRaw = await readJsonSafe(authUserResponse);
+  const authUser = unwrapAuthUser(authRaw);
+  const email = typeof authUser.email === "string" ? authUser.email : "";
+  if (!email) return { ok: false, reason: "La identidad Auth no tiene correo técnico asociado." };
+
+  const tokenResponse = await supabaseAuthFetch("/auth/v1/token?grant_type=password", {
+    method: "POST",
+    body: JSON.stringify({ email, password: internalPassword }),
+  });
+  if (!tokenResponse.ok) {
+    const detail = await readJsonSafe(tokenResponse);
+    const code = typeof detail.error_code === "string"
+      ? detail.error_code
+      : typeof detail.code === "string"
+        ? detail.code
+        : "auth_rejected";
+    return { ok: false, reason: `Supabase Auth rechazó ${username} (${code}).` };
+  }
+  return { ok: true };
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as { migrationCode?: unknown; users?: unknown };
@@ -67,7 +103,7 @@ export async function POST(request: Request) {
       return fail("No hay usuarios válidos para migrar.");
     }
 
-    const results: Array<{ username: string; status: "created" | "updated"; id?: string }> = [];
+    const results: Array<{ username: string; status: "created" | "updated"; id?: string; verified: boolean }> = [];
 
     for (const raw of body.users as LocalUserInput[]) {
       const fullName = typeof raw.fullName === "string" ? raw.fullName.trim() : "";
@@ -131,16 +167,12 @@ export async function POST(request: Request) {
             }),
           },
         );
-        if (!profileUpdate.ok) {
-          console.error("ASHA local migration existing profile update failed", await readJsonSafe(profileUpdate));
-          return fail(`No se pudo actualizar el perfil cloud de ${username}.`, 502);
-        }
+        if (!profileUpdate.ok) return fail(`No se pudo actualizar el perfil cloud de ${username}.`, 502);
+        if (!(await replacePermissions(userId, permissions))) return fail(`No se pudieron sincronizar los permisos de ${username}.`, 502);
 
-        if (!(await replacePermissions(userId, permissions))) {
-          return fail(`No se pudieron sincronizar los permisos de ${username}.`, 502);
-        }
-
-        results.push({ username, status: "updated", id: userId });
+        const verification = await verifyCredentials(userId, username, internalPassword);
+        if (!verification.ok) return fail(verification.reason || `No se pudo verificar ${username}.`, 502);
+        results.push({ username, status: "updated", id: userId, verified: true });
         continue;
       }
 
@@ -159,14 +191,10 @@ export async function POST(request: Request) {
           },
         }),
       });
-      if (!createResponse.ok) {
-        console.error("ASHA local migration auth user failed", await readJsonSafe(createResponse));
-        return fail(`No se pudo crear el acceso cloud de ${username}.`, 502);
-      }
+      if (!createResponse.ok) return fail(`No se pudo crear el acceso cloud de ${username}.`, 502);
 
-      const created = await readJsonSafe(createResponse);
-      const createdUser = created.user && typeof created.user === "object" ? created.user as Record<string, unknown> : created;
-      const userId = typeof createdUser.id === "string" ? createdUser.id : "";
+      const created = unwrapAuthUser(await readJsonSafe(createResponse));
+      const userId = typeof created.id === "string" ? created.id : "";
       if (!userId) return fail(`Supabase no devolvió el identificador de ${username}.`, 502);
 
       const profileResponse = await supabaseAdminFetch("/rest/v1/profiles", {
@@ -184,17 +212,17 @@ export async function POST(request: Request) {
         }),
       });
       if (!profileResponse.ok) {
-        console.error("ASHA local migration profile failed", await readJsonSafe(profileResponse));
         await rollbackAuthUser(userId);
         return fail(`No se pudo crear el perfil cloud de ${username}.`, 502);
       }
-
       if (!(await replacePermissions(userId, requestedPermissions))) {
         await rollbackAuthUser(userId);
         return fail(`No se pudieron migrar los permisos de ${username}.`, 502);
       }
 
-      results.push({ username, status: "created", id: userId });
+      const verification = await verifyCredentials(userId, username, internalPassword);
+      if (!verification.ok) return fail(verification.reason || `No se pudo verificar ${username}.`, 502);
+      results.push({ username, status: "created", id: userId, verified: true });
     }
 
     return NextResponse.json({ ok: true, results }, { headers: { "Cache-Control": "no-store" } });
