@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 import {
+  ASHA_MODULES,
   deriveInternalPassword,
   initialsFromName,
   normalizeUsername,
@@ -32,10 +33,29 @@ type LocalUserInput = {
   permissions?: unknown;
 };
 
+type ExistingProfile = {
+  id: string;
+  is_primary_admin?: boolean;
+};
+
 async function rollbackAuthUser(id: string) {
   try {
     await supabaseAdminFetch(`/auth/v1/admin/users/${encodeURIComponent(id)}`, { method: "DELETE" });
   } catch {}
+}
+
+async function replacePermissions(userId: string, permissions: string[]) {
+  const deleteResponse = await supabaseAdminFetch(
+    `/rest/v1/user_permissions?user_id=eq.${encodeURIComponent(userId)}`,
+    { method: "DELETE" },
+  );
+  if (!deleteResponse.ok) return false;
+  if (permissions.length === 0) return true;
+  const permissionResponse = await supabaseAdminFetch("/rest/v1/user_permissions", {
+    method: "POST",
+    body: JSON.stringify(permissions.map(module => ({ user_id: userId, module, allowed: true }))),
+  });
+  return permissionResponse.ok;
 }
 
 export async function POST(request: Request) {
@@ -47,7 +67,7 @@ export async function POST(request: Request) {
       return fail("No hay usuarios válidos para migrar.");
     }
 
-    const results: Array<{ username: string; status: "created" | "existing"; id?: string }> = [];
+    const results: Array<{ username: string; status: "created" | "updated"; id?: string }> = [];
 
     for (const raw of body.users as LocalUserInput[]) {
       const fullName = typeof raw.fullName === "string" ? raw.fullName.trim() : "";
@@ -55,25 +75,76 @@ export async function POST(request: Request) {
       const secret = typeof raw.secret === "string" ? raw.secret.trim() : "";
       const role = typeof raw.role === "string" && raw.role.trim() ? raw.role.trim() : "Usuario";
       const active = raw.active !== false;
-      const permissions = sanitizePermissions(raw.permissions);
+      const requestedPermissions = sanitizePermissions(raw.permissions);
 
       if (fullName.length < 3 || fullName.length > 120) return fail(`Nombre inválido para ${username || "un usuario"}.`);
       if (!/^[a-z0-9._-]{3,40}$/.test(username)) return fail(`Usuario inválido: ${username || "sin usuario"}.`);
       if (secret.length < 6 || secret.length > 72) return fail(`La contraseña/PIN de ${username} debe tener entre 6 y 72 caracteres.`);
 
       const existingResponse = await supabaseAdminFetch(
-        `/rest/v1/profiles?select=id&username=eq.${encodeURIComponent(username)}&limit=1`,
+        `/rest/v1/profiles?select=id,is_primary_admin&username=eq.${encodeURIComponent(username)}&limit=1`,
         { headers: { Accept: "application/json" } },
       );
       if (!existingResponse.ok) return fail(`No se pudo comprobar ${username}.`, 503);
-      const existing = (await existingResponse.json()) as Array<{ id: string }>;
-      if (existing[0]?.id) {
-        results.push({ username, status: "existing", id: existing[0].id });
+      const existing = (await existingResponse.json()) as ExistingProfile[];
+      const existingProfile = existing[0];
+      const internalPassword = deriveInternalPassword(username, secret);
+
+      if (existingProfile?.id) {
+        const userId = existingProfile.id;
+        const isPrimaryAdmin = existingProfile.is_primary_admin === true;
+        const permissions = isPrimaryAdmin ? [...ASHA_MODULES] : requestedPermissions;
+
+        const authResponse = await supabaseAdminFetch(
+          `/auth/v1/admin/users/${encodeURIComponent(userId)}`,
+          {
+            method: "PUT",
+            body: JSON.stringify({
+              password: internalPassword,
+              email_confirm: true,
+              user_metadata: {
+                asha_internal_user: true,
+                asha_username: username,
+                full_name: fullName,
+                migrated_from_local: true,
+              },
+            }),
+          },
+        );
+        if (!authResponse.ok) {
+          console.error("ASHA local migration existing auth update failed", await readJsonSafe(authResponse));
+          return fail(`No se pudo actualizar el acceso cloud de ${username}.`, 502);
+        }
+
+        const profileUpdate = await supabaseAdminFetch(
+          `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`,
+          {
+            method: "PATCH",
+            headers: { Prefer: "return=representation" },
+            body: JSON.stringify({
+              full_name: fullName,
+              role,
+              initials: initialsFromName(fullName),
+              username,
+              is_active: active,
+              notes: "Usuario sincronizado desde almacenamiento local de ASHA",
+            }),
+          },
+        );
+        if (!profileUpdate.ok) {
+          console.error("ASHA local migration existing profile update failed", await readJsonSafe(profileUpdate));
+          return fail(`No se pudo actualizar el perfil cloud de ${username}.`, 502);
+        }
+
+        if (!(await replacePermissions(userId, permissions))) {
+          return fail(`No se pudieron sincronizar los permisos de ${username}.`, 502);
+        }
+
+        results.push({ username, status: "updated", id: userId });
         continue;
       }
 
       const internalEmail = `${username}@asha.invalid`;
-      const internalPassword = deriveInternalPassword(username, secret);
       const createResponse = await supabaseAdminFetch("/auth/v1/admin/users", {
         method: "POST",
         body: JSON.stringify({
@@ -118,16 +189,9 @@ export async function POST(request: Request) {
         return fail(`No se pudo crear el perfil cloud de ${username}.`, 502);
       }
 
-      if (permissions.length > 0) {
-        const permissionResponse = await supabaseAdminFetch("/rest/v1/user_permissions", {
-          method: "POST",
-          body: JSON.stringify(permissions.map(module => ({ user_id: userId, module, allowed: true }))),
-        });
-        if (!permissionResponse.ok) {
-          console.error("ASHA local migration permissions failed", await readJsonSafe(permissionResponse));
-          await rollbackAuthUser(userId);
-          return fail(`No se pudieron migrar los permisos de ${username}.`, 502);
-        }
+      if (!(await replacePermissions(userId, requestedPermissions))) {
+        await rollbackAuthUser(userId);
+        return fail(`No se pudieron migrar los permisos de ${username}.`, 502);
       }
 
       results.push({ username, status: "created", id: userId });
