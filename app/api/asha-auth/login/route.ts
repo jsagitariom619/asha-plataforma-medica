@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  deriveInternalPassword,
   normalizeUsername,
   readJsonSafe,
   supabaseAdminFetch,
@@ -21,12 +22,12 @@ export async function POST(request: Request) {
     const username = normalizeUsername(
       typeof body.username === "string" ? body.username : "",
     );
-    const secret = typeof body.pin === "string" ? body.pin.trim() : "";
+    const providedSecret = typeof body.pin === "string" ? body.pin.trim() : "";
 
     if (
       !/^[a-z0-9._-]{3,40}$/.test(username) ||
-      secret.length < 6 ||
-      secret.length > 72
+      providedSecret.length < 6 ||
+      providedSecret.length > 72
     ) {
       return fail("Usuario o PIN/contraseña incorrectos.", 401);
     }
@@ -63,15 +64,25 @@ export async function POST(request: Request) {
 
     const authUser = await readJsonSafe(authUserResponse);
     const email = typeof authUser.email === "string" ? authUser.email : "";
+    const metadata =
+      authUser.user_metadata && typeof authUser.user_metadata === "object"
+        ? (authUser.user_metadata as Record<string, unknown>)
+        : {};
+    const isInternalUser = metadata.asha_internal_user === true;
+
     if (!email) {
       return fail("Usuario o PIN/contraseña incorrectos.", 401);
     }
+
+    const password = isInternalUser
+      ? deriveInternalPassword(username, providedSecret)
+      : providedSecret;
 
     const tokenResponse = await supabaseAuthFetch(
       "/auth/v1/token?grant_type=password",
       {
         method: "POST",
-        body: JSON.stringify({ email, password: secret }),
+        body: JSON.stringify({ email, password }),
       },
     );
 
