@@ -16,6 +16,13 @@ function fail(message: string, status = 400) {
   );
 }
 
+function unwrapAuthUser(value: Record<string, unknown>): Record<string, unknown> {
+  const nested = value.user;
+  return nested && typeof nested === "object"
+    ? (nested as Record<string, unknown>)
+    : value;
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as { username?: unknown; pin?: unknown };
@@ -57,7 +64,8 @@ export async function POST(request: Request) {
     );
     if (!authUserResponse.ok) return fail("Usuario o PIN/contraseña incorrectos.", 401);
 
-    const authUser = await readJsonSafe(authUserResponse);
+    const authPayload = await readJsonSafe(authUserResponse);
+    const authUser = unwrapAuthUser(authPayload);
     const email = typeof authUser.email === "string" ? authUser.email : "";
     const metadata =
       authUser.user_metadata && typeof authUser.user_metadata === "object"
@@ -77,7 +85,16 @@ export async function POST(request: Request) {
         body: JSON.stringify({ email, password }),
       },
     );
-    if (!tokenResponse.ok) return fail("Usuario o PIN/contraseña incorrectos.", 401);
+    if (!tokenResponse.ok) {
+      const details = await readJsonSafe(tokenResponse);
+      console.error("ASHA login token rejected", {
+        username,
+        isInternalUser,
+        status: tokenResponse.status,
+        code: typeof details.error_code === "string" ? details.error_code : undefined,
+      });
+      return fail("Usuario o PIN/contraseña incorrectos.", 401);
+    }
 
     let permissions: string[] = [];
     const permissionResponse = await supabaseAdminFetch(
