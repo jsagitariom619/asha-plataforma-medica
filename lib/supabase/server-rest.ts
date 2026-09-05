@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { getSupabasePublicConfig } from "@/lib/supabase/env";
 
 export type JsonRecord = Record<string, unknown>;
@@ -12,6 +13,21 @@ function getSupabaseSecretKey(): string {
   }
 
   return value;
+}
+
+function getPinPepper(): string {
+  const value = process.env.ASHA_PIN_PEPPER?.trim();
+  if (!value || value.length < 32) {
+    throw new Error("Missing or weak ASHA_PIN_PEPPER");
+  }
+  return value;
+}
+
+export function deriveInternalPassword(username: string, pin: string): string {
+  const normalized = normalizeUsername(username);
+  return createHmac("sha256", getPinPepper())
+    .update(`asha:${normalized}:${pin}`)
+    .digest("hex");
 }
 
 export function getSupabaseServerConfig() {
