@@ -1,10 +1,11 @@
 "use client";
 
-import {FormEvent,useEffect,useMemo,useState} from "react";
-import {FileHeart,Save,X} from "lucide-react";
+import {ChangeEvent,FormEvent,useEffect,useMemo,useRef,useState} from "react";
+import {CalendarDays,Camera,FileHeart,ImagePlus,Save,Trash2,X} from "lucide-react";
 
 type Patient={id:number;name:string;code?:string;age?:number;phone?:string};
 type HistoryRecord={id:number;createdAt:string;patient:string;patientCode:string;data:Record<string,string|string[]>};
+type Appointment={id:number;date:string;time:string;patient:string;service:string;status:string};
 
 const STORAGE_KEY="asha-aesthetic-histories-v1";
 const relevantHistory=[
@@ -14,24 +15,29 @@ const relevantHistory=[
   ["implants","Implantes, prótesis o dispositivos"],["oncology","Antecedente oncológico"],["neuromuscular","Enfermedad neuromuscular"]
 ] as const;
 
-function readPatients():Patient[]{
-  try{const data=JSON.parse(localStorage.getItem("asha-demo")||"null");return Array.isArray(data?.patients)?data.patients:[]}catch{return[]}
-}
+function readPatients():Patient[]{try{const data=JSON.parse(localStorage.getItem("asha-demo")||"null");return Array.isArray(data?.patients)?data.patients:[]}catch{return[]}}
 function readHistories():HistoryRecord[]{try{const value=JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]");return Array.isArray(value)?value:[]}catch{return[]}}
 const text=(form:FormData,name:string)=>String(form.get(name)||"").trim();
 
+async function preparePhoto(file:File){
+  const source=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||""));reader.onerror=()=>reject(new Error("No se pudo leer la imagen."));reader.readAsDataURL(file)});
+  return await new Promise<string>((resolve,reject)=>{const image=new Image();image.onload=()=>{const max=1280,scale=Math.min(1,max/Math.max(image.width,image.height)),canvas=document.createElement("canvas");canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));const ctx=canvas.getContext("2d");if(!ctx){reject(new Error("No se pudo procesar la imagen."));return}ctx.drawImage(image,0,0,canvas.width,canvas.height);resolve(canvas.toDataURL("image/jpeg",.78))};image.onerror=()=>reject(new Error("Formato de imagen no compatible."));image.src=source});
+}
+
+function addFollowUpToAgenda(appointment:Appointment){
+  try{
+    const data=JSON.parse(localStorage.getItem("asha-demo")||"null")||{};
+    const appointments:Array<Appointment>=Array.isArray(data.appointments)?data.appointments:[];
+    const duplicate=appointments.some(item=>item.date===appointment.date&&item.time===appointment.time&&item.patient===appointment.patient&&item.service===appointment.service);
+    if(!duplicate)localStorage.setItem("asha-demo",JSON.stringify({...data,appointments:[appointment,...appointments]}));
+  }catch{}
+}
+
 export function AestheticHistoryCompat(){
-  const[open,setOpen]=useState(false),[patients,setPatients]=useState<Patient[]>([]),[preselected,setPreselected]=useState(""),[saved,setSaved]=useState(false);
+  const[open,setOpen]=useState(false),[patients,setPatients]=useState<Patient[]>([]),[preselected,setPreselected]=useState(""),[saved,setSaved]=useState(false),[saveError,setSaveError]=useState("");
+  const[beforePhoto,setBeforePhoto]=useState(""),[afterPhoto,setAfterPhoto]=useState("");
   useEffect(()=>{
-    const onClick=(event:MouseEvent)=>{
-      const target=event.target as HTMLElement|null;const button=target?.closest("button");if(!button)return;
-      const label=(button.textContent||"").replace(/\s+/g," ").trim();
-      if(label!=="Nueva historia"&&label!=="Registrar evolución")return;
-      event.preventDefault();event.stopPropagation();
-      let patient="";
-      if(label==="Registrar evolución")patient=button.closest("article")?.querySelector("h3")?.textContent?.trim()||"";
-      setPatients(readPatients());setPreselected(patient);setSaved(false);setOpen(true);
-    };
+    const onClick=(event:MouseEvent)=>{const target=event.target as HTMLElement|null,button=target?.closest("button");if(!button)return;const label=(button.textContent||"").replace(/\s+/g," ").trim();if(label!=="Nueva historia"&&label!=="Registrar evolución")return;event.preventDefault();event.stopPropagation();let patient="";if(label==="Registrar evolución")patient=button.closest("article")?.querySelector("h3")?.textContent?.trim()||"";setPatients(readPatients());setPreselected(patient);setBeforePhoto("");setAfterPhoto("");setSaved(false);setSaveError("");setOpen(true)};
     document.addEventListener("click",onClick,true);return()=>document.removeEventListener("click",onClick,true);
   },[]);
   useEffect(()=>{if(!open)return;const onKey=(event:KeyboardEvent)=>{if(event.key==="Escape")setOpen(false)};document.addEventListener("keydown",onKey);return()=>document.removeEventListener("keydown",onKey)},[open]);
@@ -39,8 +45,7 @@ export function AestheticHistoryCompat(){
   if(!open)return null;
 
   const submit=(event:FormEvent<HTMLFormElement>)=>{
-    event.preventDefault();const form=new FormData(event.currentTarget);const patient=text(form,"patient");const patientInfo=patients.find(p=>p.name===patient);
-    const checks=relevantHistory.filter(([key])=>form.get(key)==="on").map(([,label])=>label);
+    event.preventDefault();setSaveError("");const form=new FormData(event.currentTarget),patient=text(form,"patient"),patientInfo=patients.find(p=>p.name===patient),checks=relevantHistory.filter(([key])=>form.get(key)==="on").map(([,label])=>label),nextControl=text(form,"nextControl"),nextControlTime=text(form,"nextControlTime");
     const data:Record<string,string|string[]>={
       consultationDate:text(form,"consultationDate"),professional:text(form,"professional"),reason:text(form,"reason"),expectations:text(form,"expectations"),
       pathological:text(form,"pathological"),surgical:text(form,"surgical"),hospitalizations:text(form,"hospitalizations"),medications:text(form,"medications"),allergyDetail:text(form,"allergyDetail"),
@@ -50,10 +55,14 @@ export function AestheticHistoryCompat(){
       fitzpatrick:text(form,"fitzpatrick"),glogau:text(form,"glogau"),skinType:text(form,"skinType"),skinFindings:text(form,"skinFindings"),facialAnalysis:text(form,"facialAnalysis"),bodyAnalysis:text(form,"bodyAnalysis"),photographicNotes:text(form,"photographicNotes"),
       assessment:text(form,"assessment"),diagnosis:text(form,"diagnosis"),objectives:text(form,"objectives"),treatmentPlan:text(form,"treatmentPlan"),alternatives:text(form,"alternatives"),
       procedure:text(form,"procedure"),areas:text(form,"areas"),product:text(form,"product"),brand:text(form,"brand"),lot:text(form,"lot"),expiration:text(form,"expiration"),amount:text(form,"amount"),dilution:text(form,"dilution"),anesthesia:text(form,"anesthesia"),technique:text(form,"technique"),deviceParameters:text(form,"deviceParameters"),procedureIncidents:text(form,"procedureIncidents"),
-      informedConsent:text(form,"informedConsent"),photoAuthorization:text(form,"photoAuthorization"),postCare:text(form,"postCare"),evolution:text(form,"evolution"),adverseEvents:text(form,"adverseEvents"),nextControl:text(form,"nextControl"),finalNotes:text(form,"finalNotes")
+      informedConsent:text(form,"informedConsent"),photoAuthorization:text(form,"photoAuthorization"),postCare:text(form,"postCare"),evolution:text(form,"evolution"),adverseEvents:text(form,"adverseEvents"),nextControl,nextControlTime,finalNotes:text(form,"finalNotes"),beforePhoto,afterPhoto
     };
     const record:HistoryRecord={id:Date.now(),createdAt:new Date().toISOString(),patient,patientCode:patientInfo?.code||"",data};
-    localStorage.setItem(STORAGE_KEY,JSON.stringify([record,...readHistories()]));setSaved(true);setTimeout(()=>setOpen(false),650);
+    try{
+      localStorage.setItem(STORAGE_KEY,JSON.stringify([record,...readHistories()]));
+      if(nextControl)addFollowUpToAgenda({id:Date.now()+1,date:nextControl,time:nextControlTime||"—",patient:patient||"Paciente sin seleccionar",service:"Control de medicina estética",status:"Pendiente"});
+      setSaved(true);setTimeout(()=>setOpen(false),850);
+    }catch{setSaveError("No se pudo guardar la historia. Las fotografías pueden superar el espacio disponible del dispositivo; prueba con imágenes más pequeñas.")}
   };
 
   return <div className="aesthetic-history-layer" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setOpen(false)}}>
@@ -68,8 +77,7 @@ export function AestheticHistoryCompat(){
 
         <HistorySection title="2. Antecedentes médicos y factores de riesgo" text="Antecedentes relevantes para procedimientos estéticos y seguridad del paciente.">
           <div className="history-grid"><HistoryField label="Antecedentes patológicos"><textarea name="pathological" rows={3}/></HistoryField><HistoryField label="Antecedentes quirúrgicos"><textarea name="surgical" rows={3}/></HistoryField><HistoryField label="Hospitalizaciones / procedimientos previos"><textarea name="hospitalizations" rows={3}/></HistoryField><HistoryField label="Medicamentos y suplementos actuales"><textarea name="medications" rows={3}/></HistoryField><HistoryField label="Alergias: detalle"><textarea name="allergyDetail" rows={3}/></HistoryField><HistoryField label="Antecedentes gineco-obstétricos, si aplica"><textarea name="gynecologic" rows={3} placeholder="Gestación, lactancia, anticoncepción, menopausia…"/></HistoryField><HistoryField label="Hábitos"><textarea name="habits" rows={3} placeholder="Tabaco, alcohol, sueño, actividad física…"/></HistoryField><HistoryField label="Exposición solar y fotoprotección"><textarea name="sunExposure" rows={3}/></HistoryField></div>
-          <div className="history-checks">{relevantHistory.map(([key,label])=><label key={key}><input type="checkbox" name={key}/><span>{label}</span></label>)}</div>
-          <HistoryField label="Otros antecedentes relevantes"><textarea name="otherRelevant" rows={3}/></HistoryField>
+          <div className="history-checks">{relevantHistory.map(([key,label])=><label key={key}><input type="checkbox" name={key}/><span>{label}</span></label>)}</div><HistoryField label="Otros antecedentes relevantes"><textarea name="otherRelevant" rows={3}/></HistoryField>
         </HistorySection>
 
         <HistorySection title="3. Antecedentes estéticos" text="Procedimientos previos, respuesta clínica y posibles complicaciones.">
@@ -93,15 +101,22 @@ export function AestheticHistoryCompat(){
 
         <HistorySection title="7. Consentimientos, indicaciones y seguimiento" text="Registro documental de la información brindada y evolución posterior.">
           <div className="history-grid history-grid-2"><HistoryField label="Consentimiento informado"><select name="informedConsent" defaultValue=""><option value="">No registrado</option><option>Firmado</option><option>Explicado / pendiente de firma</option><option>No aplica</option></select></HistoryField><HistoryField label="Autorización para fotografías"><select name="photoAuthorization" defaultValue=""><option value="">No registrado</option><option>Autorizada para historia clínica</option><option>Autorizada para uso científico / educativo</option><option>No autorizada</option></select></HistoryField></div>
-          <div className="history-grid"><HistoryField label="Indicaciones posteriores"><textarea name="postCare" rows={4}/></HistoryField><HistoryField label="Evolución / respuesta al tratamiento"><textarea name="evolution" rows={4}/></HistoryField><HistoryField label="Eventos adversos / complicaciones"><textarea name="adverseEvents" rows={4}/></HistoryField><HistoryField label="Próximo control"><input name="nextControl" placeholder="Fecha o intervalo sugerido"/></HistoryField></div>
+          <div className="history-grid"><HistoryField label="Indicaciones posteriores"><textarea name="postCare" rows={4}/></HistoryField><HistoryField label="Evolución / respuesta al tratamiento"><textarea name="evolution" rows={4}/></HistoryField><HistoryField label="Eventos adversos / complicaciones"><textarea name="adverseEvents" rows={4}/></HistoryField><div className="history-followup"><div className="history-followup-title"><CalendarDays/><div><b>Próximo control</b><small>La fecha se registra también en la Agenda de ASHA.</small></div></div><div className="history-grid history-grid-2"><HistoryField label="Fecha"><input name="nextControl" type="date"/></HistoryField><HistoryField label="Hora (opcional)"><input name="nextControlTime" type="time"/></HistoryField></div></div></div>
           <HistoryField label="Observaciones finales"><textarea name="finalNotes" rows={4}/></HistoryField>
+          <div className="history-photo-title"><div><ImagePlus/><span><b>Registro fotográfico antes y después</b><small>Agrega fotografías desde el dispositivo o toma una foto directamente.</small></span></div></div>
+          <div className="history-photo-grid"><PhotoSlot label="Antes" value={beforePhoto} onChange={setBeforePhoto}/><PhotoSlot label="Después" value={afterPhoto} onChange={setAfterPhoto}/></div>
         </HistorySection>
 
-        <footer className="aesthetic-history-actions"><span>{saved?"Historia guardada correctamente":"Puedes guardar la historia aunque existan campos vacíos."}</span><button type="button" className="history-secondary" onClick={()=>setOpen(false)}>Cancelar</button><button type="submit" className="history-primary"><Save/>Guardar historia</button></footer>
+        <footer className="aesthetic-history-actions"><span>{saveError|| (saved?"Historia guardada correctamente":"Puedes guardar la historia aunque existan campos vacíos.")}</span><button type="button" className="history-secondary" onClick={()=>setOpen(false)}>Cancelar</button><button type="submit" className="history-primary"><Save/>Guardar historia</button></footer>
       </form>
     </section>
   </div>
 }
 
+function PhotoSlot({label,value,onChange}:{label:string;value:string;onChange:(value:string)=>void}){
+  const galleryRef=useRef<HTMLInputElement>(null),cameraRef=useRef<HTMLInputElement>(null),[busy,setBusy]=useState(false),[error,setError]=useState("");
+  const choose=async(event:ChangeEvent<HTMLInputElement>)=>{const file=event.target.files?.[0];event.target.value="";if(!file)return;setBusy(true);setError("");try{onChange(await preparePhoto(file))}catch{setError("No se pudo cargar la imagen.")}finally{setBusy(false)}};
+  return <div className="history-photo-card"><div className="history-photo-card-head"><b>{label}</b>{value&&<button type="button" onClick={()=>onChange("")}><Trash2/>Quitar</button>}</div><div className={value?"history-photo-preview has-photo":"history-photo-preview"}>{value?<img src={value} alt={`Fotografía ${label.toLowerCase()}`}/>:<><ImagePlus/><span>Sin fotografía</span></>}</div><div className="history-photo-actions"><button type="button" onClick={()=>galleryRef.current?.click()} disabled={busy}><ImagePlus/>{busy?"Procesando…":"Elegir imagen"}</button><button type="button" onClick={()=>cameraRef.current?.click()} disabled={busy}><Camera/>Tomar foto</button></div>{error&&<small className="history-photo-error">{error}</small>}<input ref={galleryRef} hidden type="file" accept="image/*" onChange={choose}/><input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={choose}/></div>
+}
 function HistorySection({title,text,children}:{title:string;text:string;children:React.ReactNode}){return <fieldset className="history-section"><legend>{title}</legend><p>{text}</p>{children}</fieldset>}
 function HistoryField({label,children}:{label:string;children:React.ReactNode}){return <label className="history-field"><span>{label}</span>{children}</label>}
