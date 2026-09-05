@@ -1,8 +1,46 @@
-/* Session action consistency: logout belongs to the sidebar only. */
+/* Ajustes puntuales del menú lateral móvil.
+   1) Cerrar sesión debe permanecer visible en Resumen y en cualquier módulo/rol.
+   2) Se elimina visualmente la X superior: el menú se cierra tocando el fondo exterior. */
+
+/* La acción de sesión vive únicamente dentro del menú lateral. */
 .head-actions > button[data-variant="outline"]:last-child{display:none!important}
 
-/* Keep logout reachable for every role and every module, including compact/auxiliary menus. */
-.sidebar nav{min-height:0;overflow-y:auto;overscroll-behavior:contain}
-.logout-button{margin-top:auto;flex:0 0 auto;width:100%;display:flex;align-items:center;gap:10px;border:0;background:transparent;color:#4f6662;padding:11px 12px;border-radius:9px;font-size:13px;text-align:left}
+/* El sidebar ocupa exactamente el alto útil del dispositivo y no deja que el contenido
+   empuje el botón de cierre de sesión fuera de pantalla, incluso en móvil apaisado. */
+.sidebar{
+  height:100dvh;
+  max-height:100dvh;
+  overflow:hidden;
+  padding-bottom:max(17px,env(safe-area-inset-bottom));
+}
+
+/* El listado de módulos absorbe el espacio restante y, si hace falta, es el único
+   sector que hace scroll. De esta forma Cerrar sesión queda siempre anclado abajo. */
+.sidebar nav{
+  flex:1 1 auto;
+  min-height:0;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+}
+
+.logout-button{
+  margin-top:10px;
+  flex:0 0 auto;
+  width:100%;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  border:0;
+  background:transparent;
+  color:#4f6662;
+  padding:11px 12px;
+  border-radius:9px;
+  font-size:13px;
+  text-align:left;
+}
 .logout-button:hover{background:rgba(22,75,71,.075);color:var(--teal)}
 .logout-button svg{width:18px;height:18px;flex:none}
+
+/* La X es redundante porque el scrim ya cierra el menú al tocar fuera. */
+.brand > button[aria-label="Cerrar menú"]{display:none!important}
