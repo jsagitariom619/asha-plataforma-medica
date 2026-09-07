@@ -7,6 +7,14 @@ export function ClinicalUiPunctualFixes(){
     const openPatientFromHistory=(name:string)=>{
       window.dispatchEvent(new CustomEvent("asha-open-patient-profile",{detail:{patient:name,source:"Historias clínicas"}}));
     };
+    const launchDirectAttention=(name:string)=>{
+      const card=Array.from(document.querySelectorAll<HTMLElement>("article.record")).find(item=>item.querySelector("h3")?.textContent?.trim()===name);
+      const button=Array.from(card?.querySelectorAll<HTMLButtonElement>("button")||[]).find(item=>(item.textContent||"").includes("Ver expediente")||(item.textContent||"").includes("Nueva atención"));
+      if(!button)return;
+      button.dataset.ashaDirectAttention="true";
+      button.click();
+      delete button.dataset.ashaDirectAttention;
+    };
     const enhance=()=>{
       const section=document.querySelector(".app>main>header h1")?.textContent?.trim();
       const headerGold=document.querySelector<HTMLButtonElement>(".head-actions > button.gold");
@@ -22,11 +30,19 @@ export function ClinicalUiPunctualFixes(){
           newAttention.dataset.ashaHistoryRedirect="true";
           newAttention.textContent="Ver expediente";
           newAttention.setAttribute("aria-label","Ver expediente del paciente");
-          newAttention.addEventListener("click",event=>{event.preventDefault();event.stopPropagation();const name=card.querySelector("h3")?.textContent?.trim();if(name)openPatientFromHistory(name)},true);
+          newAttention.addEventListener("click",event=>{
+            if(newAttention.dataset.ashaDirectAttention==="true")return;
+            event.preventDefault();
+            event.stopPropagation();
+            const name=card.querySelector("h3")?.textContent?.trim();
+            if(name)openPatientFromHistory(name)
+          },true);
         }
       });
     };
-    const observer=new MutationObserver(enhance);observer.observe(document.body,{childList:true,subtree:true});enhance();return()=>observer.disconnect();
+    const onDirectAttention=(event:Event)=>{const name=(event as CustomEvent<{patient?:string}>).detail?.patient||"";if(name)launchDirectAttention(name)};
+    window.addEventListener("asha-open-new-attention",onDirectAttention as EventListener);
+    const observer=new MutationObserver(enhance);observer.observe(document.body,{childList:true,subtree:true});enhance();return()=>{observer.disconnect();window.removeEventListener("asha-open-new-attention",onDirectAttention as EventListener)};
   },[]);
   return null;
 }
