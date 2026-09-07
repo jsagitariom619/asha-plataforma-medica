@@ -41,20 +41,32 @@ export function PatientBillingPanel({patients,attentions,txs,onPayment}:{patient
   const[selected,setSelected]=useState<BalanceRow|null>(null);
   const[newChargePatientId,setNewChargePatientId]=useState<number|null>(null);
   const clean=query.trim().toLowerCase();
-  const attentionRows=useMemo<BalanceRow[]>(()=>attentions.map(attention=>{
-    const patient=patients.find(item=>item.id===attention.patientId);if(!patient)return null;
+
+  const attentionRows=useMemo<BalanceRow[]>(()=>attentions.flatMap(attention=>{
+    const patient=patients.find(item=>item.id===attention.patientId);
+    if(!patient)return[];
     const paid=txs.filter(tx=>tx.attentionId===attention.id&&tx.patientId===attention.patientId&&tx.type==="Ingreso"&&tx.status!=="Pendiente"&&tx.status!=="Anulado"&&tx.origin==="patient-payment").reduce((total,tx)=>total+(Number(tx.amount)||0),0);
     const total=Math.max(0,Number(attention.totalCost)||0),balance=Math.max(0,total-paid);
-    return{attention,patient,paid,balance,total,concept:attention.procedure||attention.reason||"Atención clínica"};
-  }).filter((item):item is BalanceRow=>Boolean(item)),[patients,attentions,txs]);
+    return[{attention,patient,paid,balance,total,concept:attention.procedure||attention.reason||"Atención clínica"}];
+  }),[patients,attentions,txs]);
+
   const directRows=useMemo<BalanceRow[]>(()=>{
     const ids=Array.from(new Set(txs.filter(tx=>tx.patientId&&!tx.attentionId&&tx.operationId?.startsWith("CHG-")&&(tx.origin==="patient-payment"||tx.origin==="patient-charge")).map(tx=>tx.operationId as string)));
-    return ids.map(operationId=>{const group=txs.filter(tx=>tx.operationId===operationId&&tx.status!=="Anulado"),sample=group[0],patient=patients.find(item=>item.id===sample?.patientId);if(!patient)return null;const paid=group.filter(tx=>tx.origin==="patient-payment"&&tx.status!=="Pendiente").reduce((sum,tx)=>sum+(Number(tx.amount)||0),0),balance=group.filter(tx=>tx.origin==="patient-charge"&&tx.status==="Pendiente").reduce((sum,tx)=>sum+(Number(tx.amount)||0),0),concept=group.find(tx=>tx.origin==="patient-payment")?.concept||String(group.find(tx=>tx.origin==="patient-charge")?.concept||"Cobro directo").replace(/^Saldo · /,"");return{patient,paid,balance,total:paid+balance,concept,operationId,direct:true}}).filter((item):item is BalanceRow=>Boolean(item));
+    return ids.flatMap(operationId=>{
+      const group=txs.filter(tx=>tx.operationId===operationId&&tx.status!=="Anulado"),sample=group[0],patient=patients.find(item=>item.id===sample?.patientId);
+      if(!patient)return[];
+      const paid=group.filter(tx=>tx.origin==="patient-payment"&&tx.status!=="Pendiente").reduce((sum,tx)=>sum+(Number(tx.amount)||0),0);
+      const balance=group.filter(tx=>tx.origin==="patient-charge"&&tx.status==="Pendiente").reduce((sum,tx)=>sum+(Number(tx.amount)||0),0);
+      const concept=group.find(tx=>tx.origin==="patient-payment")?.concept||String(group.find(tx=>tx.origin==="patient-charge")?.concept||"Cobro directo").replace(/^Saldo · /,"");
+      return[{patient,paid,balance,total:paid+balance,concept,operationId,direct:true}];
+    });
   },[patients,txs]);
+
   const allRows=useMemo(()=>[...attentionRows,...directRows].sort((a,b)=>{const ad=a.attention?.createdAt||txs.find(tx=>tx.operationId===a.operationId)?.createdAt||"";const bd=b.attention?.createdAt||txs.find(tx=>tx.operationId===b.operationId)?.createdAt||"";return bd.localeCompare(ad)}),[attentionRows,directRows,txs]);
   const summaries=useMemo<PatientSummary[]>(()=>patients.filter(patient=>!clean||`${patient.name} ${patient.code} ${patient.phone}`.toLowerCase().includes(clean)).map(patient=>{const rows=allRows.filter(row=>row.patient.id===patient.id);return{patient,rows,total:rows.reduce((sum,row)=>sum+row.total,0),paid:rows.reduce((sum,row)=>sum+row.paid,0),balance:rows.reduce((sum,row)=>sum+row.balance,0)}}),[patients,allRows,clean]);
   const visibleRows=useMemo(()=>allRows.filter(item=>!clean||`${item.patient.name} ${item.patient.code} ${item.concept}`.toLowerCase().includes(clean)),[allRows,clean]);
   const pendingTotal=allRows.reduce((total,row)=>total+row.balance,0);
+
   return <>
     <section className="panel" style={{display:"grid",gap:14}}>
       <div className="title" style={{marginBottom:0,alignItems:"center"}}><div><h3>Estado de cuenta por paciente</h3><p>Busca cualquier paciente registrado para cobrar, revisar pagos o registrar un abono.</p></div><div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><span className="tag" style={{fontSize:10}}>{money(pendingTotal)} pendiente</span><Button className="gold" type="button" onClick={()=>setNewChargePatientId(0)}><Plus/>Nuevo cobro</Button></div></div>
