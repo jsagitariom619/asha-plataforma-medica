@@ -14,13 +14,16 @@ const nowLabel=()=>new Intl.DateTimeFormat("es-BO",{timeZone:BOLIVIA_TZ,dateStyl
 
 type BalanceRow={attention?:Attention;patient:Patient;paid:number;balance:number;total:number;concept:string;operationId?:string;direct?:boolean};
 type PatientSummary={patient:Patient;rows:BalanceRow[];total:number;paid:number;balance:number};
+type ServiceOption={id:number;name:string;category?:string;price:number;active?:boolean};
+type LinkedTx=Tx&{serviceId?:number};
 
 function readStore(){try{return JSON.parse(localStorage.getItem("asha-demo")||"null")||{}}catch{return{}}}
-function saveDirectCharge(patient:Patient,concept:string,total:number,paid:number,method:string){
-  const store=readStore(),existing:Tx[]=Array.isArray(store.txs)?store.txs:[],createdAt=new Date().toISOString(),stamp=Date.now(),operationId=`CHG-${patient.id}-${stamp}`,rows:Tx[]=[];
-  if(paid>0)rows.push({id:stamp+1,concept,reference:patient.name,type:"Ingreso",amount:paid,date:nowLabel(),createdAt,method,status:"Pagado",origin:"patient-payment",operationId,patientId:patient.id});
+function readServices():ServiceOption[]{const store=readStore();return (Array.isArray(store?.services)?store.services:[]).filter((item:ServiceOption)=>item&&item.active!==false&&Number.isFinite(Number(item.price))).map((item:ServiceOption)=>({...item,price:Number(item.price)||0}))}
+function saveDirectCharge(patient:Patient,concept:string,total:number,paid:number,method:string,serviceId?:number){
+  const store=readStore(),existing:Tx[]=Array.isArray(store.txs)?store.txs:[],createdAt=new Date().toISOString(),stamp=Date.now(),operationId=`CHG-${patient.id}-${stamp}`,rows:LinkedTx[]=[];
+  if(paid>0)rows.push({id:stamp+1,concept,reference:patient.name,type:"Ingreso",amount:paid,date:nowLabel(),createdAt,method,status:"Pagado",origin:"patient-payment",operationId,patientId:patient.id,serviceId});
   const balance=Math.max(0,total-paid);
-  if(balance>0)rows.push({id:stamp+2,concept:`Saldo · ${concept}`,reference:patient.name,type:"Ingreso",amount:balance,date:nowLabel(),createdAt,method:"Pendiente",status:"Pendiente",origin:"patient-charge",operationId,patientId:patient.id});
+  if(balance>0)rows.push({id:stamp+2,concept:`Saldo · ${concept}`,reference:patient.name,type:"Ingreso",amount:balance,date:nowLabel(),createdAt,method:"Pendiente",status:"Pendiente",origin:"patient-charge",operationId,patientId:patient.id,serviceId});
   localStorage.setItem("asha-demo",JSON.stringify({...store,txs:[...rows,...existing]}));
 }
 function saveDirectPayment(row:BalanceRow,amount:number,method:string){
@@ -60,15 +63,28 @@ export function PatientBillingPanel({patients,attentions,txs,onPayment}:{patient
       {visibleRows.length?<div className="table"><table><thead><tr><th>Paciente</th><th>Concepto</th><th>Total</th><th>Pagado</th><th>Saldo</th><th></th></tr></thead><tbody>{visibleRows.map(row=><tr key={row.attention?.id||row.operationId}><td><b>{row.patient.name}<small>{row.patient.code}</small></b></td><td>{row.concept}</td><td>{money(row.total)}</td><td className="green">{money(row.paid)}</td><td className={row.balance>0?"red":"green"}>{money(row.balance)}</td><td>{row.balance>0?<Button type="button" variant="outline" onClick={()=>setSelected(row)}>Registrar abono</Button>:<span className="tag">Pagado</span>}</td></tr>)}</tbody></table></div>:!clean?<div style={{padding:"18px",textAlign:"center",color:"#7d8581",fontSize:12}}>No hay cobros todavía. Usa “Nuevo cobro” o busca un paciente registrado.</div>:null}
     </section>
     <PaymentDialog row={selected} close={()=>setSelected(null)} onPayment={onPayment}/>
-    <NewChargeDialog open={newChargePatientId!==null} initialPatientId={newChargePatientId||undefined} patients={patients} close={()=>setNewChargePatientId(null)}/>
+    <NewChargeDialog key={`new-charge-${newChargePatientId??"closed"}`} open={newChargePatientId!==null} initialPatientId={newChargePatientId||undefined} patients={patients} close={()=>setNewChargePatientId(null)}/>
   </>
 }
 
 function NewChargeDialog({open,initialPatientId,patients,close}:{open:boolean;initialPatientId?:number;patients:Patient[];close:()=>void}){
   const[error,setError]=useState("");
+  const services=useMemo(()=>readServices(),[open]);
+  const[source,setSource]=useState("custom");
+  const[concept,setConcept]=useState("");
+  const[total,setTotal]=useState("");
   if(!open)return null;
-  const submit=(event:FormEvent<HTMLFormElement>)=>{event.preventDefault();setError("");const data=new FormData(event.currentTarget),patientId=Number(data.get("patient")),patient=patients.find(item=>item.id===patientId),concept=String(data.get("concept")||"").trim(),total=Number(data.get("total")),paid=Number(data.get("paid")),method=String(data.get("method")||"Efectivo");if(!patient){setError("Selecciona un paciente válido.");return}if(!concept){setError("Indica qué se está cobrando.");return}if(!Number.isFinite(total)||total<=0){setError("Ingresa un importe total válido.");return}if(!Number.isFinite(paid)||paid<0){setError("Ingresa cuánto está pagando el paciente.");return}if(paid>total+0.001){setError("El pago no puede superar el importe total del cobro.");return}saveDirectCharge(patient,concept,total,paid,method);close();window.location.reload()};
-  return <Dialog open onOpenChange={value=>!value&&close()}><DialogContent><DialogHeader><DialogTitle>Nuevo cobro</DialogTitle><DialogDescription>Registra un cobro directo al paciente. Si paga solo una parte, el saldo quedará pendiente para futuros abonos.</DialogDescription></DialogHeader><form className="form" onSubmit={submit}><label className="field"><Label>Paciente</Label><select name="patient" defaultValue={initialPatientId??patients[0]?.id} required>{patients.map(patient=><option key={patient.id} value={patient.id}>{patient.name} · {patient.code}</option>)}</select></label><label className="field"><Label>Concepto del cobro</Label><Input name="concept" placeholder="Ej. Consulta médica" required/></label><div className="cols"><label className="field"><Label>Importe total (Bs)</Label><Input name="total" type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="100" required/></label><label className="field"><Label>Pago recibido ahora (Bs)</Label><Input name="paid" type="number" inputMode="decimal" min="0" step="0.01" placeholder="100" required/></label></div><label className="field"><Label>Método de pago</Label><select name="method" defaultValue="Efectivo"><option>Efectivo</option><option>QR</option><option>Transferencia</option><option>Tarjeta</option><option>Otro</option></select></label>{error&&<p className="auth-error" role="alert">{error}</p>}<div className="form-actions"><Button type="button" variant="outline" onClick={close}>Cancelar</Button><Button className="gold" type="submit">Registrar cobro</Button></div></form></DialogContent></Dialog>
+  const chooseSource=(value:string)=>{setSource(value);setError("");if(value==="custom"){setConcept("");setTotal("");return}const service=services.find(item=>String(item.id)===value);if(service){setConcept(service.name);setTotal(String(service.price))}};
+  const submit=(event:FormEvent<HTMLFormElement>)=>{event.preventDefault();setError("");const data=new FormData(event.currentTarget),patientId=Number(data.get("patient")),patient=patients.find(item=>item.id===patientId),cleanConcept=concept.trim(),totalValue=Number(total),paid=Number(data.get("paid")),method=String(data.get("method")||"Efectivo"),serviceId=source!=="custom"?Number(source):undefined;if(!patient){setError("Selecciona un paciente válido.");return}if(!cleanConcept){setError("Indica el motivo o detalle del cobro.");return}if(!Number.isFinite(totalValue)||totalValue<=0){setError("Ingresa un importe total válido.");return}if(!Number.isFinite(paid)||paid<0){setError("Ingresa cuánto está pagando el paciente.");return}if(paid>totalValue+0.001){setError("El pago no puede superar el importe total del cobro.");return}saveDirectCharge(patient,cleanConcept,totalValue,paid,method,Number.isFinite(serviceId)?serviceId:undefined);close();window.location.reload()};
+  return <Dialog open onOpenChange={value=>!value&&close()}><DialogContent><DialogHeader><DialogTitle>Nuevo cobro</DialogTitle><DialogDescription>Úsalo para un costo adicional. Puedes tomar un servicio ya creado o registrar un concepto libre sin crear un servicio nuevo.</DialogDescription></DialogHeader><form className="form" onSubmit={submit}>
+    <label className="field"><Label>Paciente</Label><select name="patient" defaultValue={initialPatientId??patients[0]?.id} required>{patients.map(patient=><option key={patient.id} value={patient.id}>{patient.name} · {patient.code}</option>)}</select></label>
+    <label className="field"><Label>Tipo de cobro</Label><select value={source} onChange={event=>chooseSource(event.target.value)}><option value="custom">Otro concepto / costo adicional</option>{services.map(service=><option key={service.id} value={service.id}>{service.name} · {money(service.price)}</option>)}</select></label>
+    <label className="field"><Label>Motivo / detalle del cobro</Label><Input value={concept} onChange={event=>setConcept(event.target.value)} placeholder="Ej. Material adicional del procedimiento" required/></label>
+    <div className="cols"><label className="field"><Label>Importe total (Bs)</Label><Input value={total} onChange={event=>setTotal(event.target.value)} type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="100" required/></label><label className="field"><Label>Pago recibido ahora (Bs)</Label><Input name="paid" type="number" inputMode="decimal" min="0" step="0.01" placeholder={total||"0"} required/></label></div>
+    {source!=="custom"&&<p className="form-note" style={{margin:0}}>El servicio carga su precio configurado como referencia. Puedes ajustar el importe o ampliar el detalle antes de guardar.</p>}
+    <label className="field"><Label>Método de pago</Label><select name="method" defaultValue="Efectivo"><option>Efectivo</option><option>QR</option><option>Transferencia</option><option>Tarjeta</option><option>Otro</option></select></label>
+    {error&&<p className="auth-error" role="alert">{error}</p>}<div className="form-actions"><Button type="button" variant="outline" onClick={close}>Cancelar</Button><Button className="gold" type="submit">Registrar cobro</Button></div>
+  </form></DialogContent></Dialog>
 }
 
 function PaymentDialog({row,close,onPayment}:{row:BalanceRow|null;close:()=>void;onPayment:(patientId:number,attentionId:number,amount:number,method:string)=>string}){
