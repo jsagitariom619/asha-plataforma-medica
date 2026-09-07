@@ -7,10 +7,35 @@ type Appointment={id:number;date:string;time:string;patient:string;service:strin
 type CompletedMap=Record<string,{completedAt:string;date:string}>;
 
 const COMPLETED_KEY="asha-completed-consultations-v1";
+const LEGACY_DEMO_MIGRATION_KEY="asha-clinical-demo-status-v2";
+const LEGACY_ATTENDED_NAMES=new Set(["María Fernanda López","Carlos Alberto Rojas","Ana Sofía Méndez"]);
 const todayKey=()=>{const now=new Date();return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`};
 const visitLabel=(iso:string)=>{const date=new Date(iso);return `Hoy, ${new Intl.DateTimeFormat("es-BO",{hour:"2-digit",minute:"2-digit",hour12:false}).format(date)}`};
 function readCompleted():CompletedMap{try{const value=JSON.parse(localStorage.getItem(COMPLETED_KEY)||"{}");return value&&typeof value==="object"?value:{}}catch{return{}}}
 function writeCompleted(value:CompletedMap){try{localStorage.setItem(COMPLETED_KEY,JSON.stringify(value))}catch{}}
+
+function migrateLegacyDemoStatuses(){
+  try{
+    if(localStorage.getItem(LEGACY_DEMO_MIGRATION_KEY)==="done")return;
+    const stored=JSON.parse(localStorage.getItem("asha-demo")||"null")||{};
+    const patients:Array<Patient>=Array.isArray(stored.patients)?stored.patients:[];
+    const appointments:Array<Appointment>=Array.isArray(stored.appointments)?stored.appointments:[];
+    let changed=false;
+    const nextPatients=patients.map(patient=>{
+      if(!LEGACY_ATTENDED_NAMES.has(patient.name)||patient.status==="Atendido")return patient;
+      changed=true;
+      return{...patient,status:"Atendido"};
+    });
+    const nextAppointments=appointments.map(appointment=>{
+      const legacyMaria=appointment.patient==="María Fernanda López"&&appointment.time==="09:30"&&appointment.service==="Consulta integral";
+      if(!legacyMaria||appointment.status==="Atendido")return appointment;
+      changed=true;
+      return{...appointment,status:"Atendido"};
+    });
+    if(changed)localStorage.setItem("asha-demo",JSON.stringify({...stored,patients:nextPatients,appointments:nextAppointments}));
+    localStorage.setItem(LEGACY_DEMO_MIGRATION_KEY,"done");
+  }catch{}
+}
 
 function persistCompletion(patientName:string,completedAt:string){
   try{
@@ -33,13 +58,19 @@ function syncDom(){
   document.querySelectorAll<HTMLElement>(".agenda > div").forEach(row=>{const name=row.querySelector("b")?.textContent?.trim();if(!name)return;const item=completed[name];if(!item||item.date!==today)return;const tag=row.querySelector<HTMLElement>("em.tag");if(tag&&tag.textContent!=="Anulado"&&tag.textContent!=="Atendido")tag.textContent="Atendido"});
 }
 
+function syncLegacyDemoDom(){
+  document.querySelectorAll<HTMLElement>(".person").forEach(row=>{const name=row.querySelector("b")?.textContent?.trim();if(!name||!LEGACY_ATTENDED_NAMES.has(name))return;const tag=row.querySelector<HTMLElement>(".tag");if(tag&&tag.textContent!=="Atendido")tag.textContent="Atendido"});
+  document.querySelectorAll<HTMLElement>(".agenda > div").forEach(row=>{const name=row.querySelector("b")?.textContent?.trim();const time=row.querySelector("time")?.textContent?.trim();if(name!=="María Fernanda López"||time!=="09:30")return;const tag=row.querySelector<HTMLElement>("em.tag");if(tag&&tag.textContent!=="Atendido")tag.textContent="Atendido"});
+}
+
 export function ClinicalStatusSync(){
   useEffect(()=>{
+    migrateLegacyDemoStatuses();
     let timer:number|undefined;
-    const reconcile=()=>{window.clearTimeout(timer);timer=window.setTimeout(()=>{const completed=readCompleted();Object.entries(completed).forEach(([name,item])=>persistCompletion(name,item.completedAt));syncDom()},40)};
-    const onSubmit=(event:Event)=>{const form=event.target as HTMLFormElement|null;if(!form?.classList.contains("aesthetic-history-form"))return;const data=new FormData(form),patient=String(data.get("patient")||"").trim();if(!patient)return;const completedAt=new Date().toISOString(),completed=readCompleted();completed[patient]={completedAt,date:todayKey()};writeCompleted(completed);window.setTimeout(()=>{persistCompletion(patient,completedAt);syncDom();window.dispatchEvent(new CustomEvent("asha-clinical-completed",{detail:{patient}}))},120)};
+    const reconcile=()=>{window.clearTimeout(timer);timer=window.setTimeout(()=>{const completed=readCompleted();Object.entries(completed).forEach(([name,item])=>persistCompletion(name,item.completedAt));syncLegacyDemoDom();syncDom()},40)};
+    const onSubmit=(event:Event)=>{const form=event.target as HTMLFormElement|null;if(!form?.classList.contains("aesthetic-history-form"))return;const data=new FormData(form),patient=String(data.get("patient")||"").trim();if(!patient)return;const completedAt=new Date().toISOString(),completed=readCompleted();completed[patient]={completedAt,date:todayKey()};writeCompleted(completed);window.setTimeout(()=>{persistCompletion(patient,completedAt);syncLegacyDemoDom();syncDom();window.dispatchEvent(new CustomEvent("asha-clinical-completed",{detail:{patient}}))},120)};
     document.addEventListener("submit",onSubmit,true);
-    const observer=new MutationObserver(reconcile);observer.observe(document.body,{childList:true,subtree:true,characterData:true});syncDom();
+    const observer=new MutationObserver(reconcile);observer.observe(document.body,{childList:true,subtree:true,characterData:true});syncLegacyDemoDom();syncDom();
     return()=>{document.removeEventListener("submit",onSubmit,true);observer.disconnect();window.clearTimeout(timer)};
   },[]);
   return null;
