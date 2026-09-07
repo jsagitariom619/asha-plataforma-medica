@@ -39,10 +39,18 @@ export async function POST(request: Request) {
       return fail("Usuario o PIN/contraseña incorrectos.", 401);
     }
 
-    const profileResponse = await supabaseAdminFetch(
-      `/rest/v1/profiles?select=id,username,full_name,role,is_active,is_primary_admin&username=eq.${encodeURIComponent(username)}&limit=1`,
+    let profileResponse = await supabaseAdminFetch(
+      `/rest/v1/profiles?select=id,username,full_name,role,is_active,is_primary_admin,avatar_url&username=eq.${encodeURIComponent(username)}&limit=1`,
       { headers: { Accept: "application/json" } },
     );
+    let avatarSupported = profileResponse.ok;
+    if (!profileResponse.ok) {
+      profileResponse = await supabaseAdminFetch(
+        `/rest/v1/profiles?select=id,username,full_name,role,is_active,is_primary_admin&username=eq.${encodeURIComponent(username)}&limit=1`,
+        { headers: { Accept: "application/json" } },
+      );
+      avatarSupported = false;
+    }
     if (!profileResponse.ok) return fail("No se pudo validar el acceso.", 503);
 
     const profiles = (await profileResponse.json()) as Array<{
@@ -52,6 +60,7 @@ export async function POST(request: Request) {
       role: string;
       is_active: boolean;
       is_primary_admin: boolean;
+      avatar_url: string | null;
     }>;
     const profile = profiles[0];
     if (!profile || profile.is_active !== true) {
@@ -124,6 +133,7 @@ export async function POST(request: Request) {
           fullName: profile.full_name,
           role: profile.role,
           isPrimaryAdmin: profile.is_primary_admin,
+          avatarUrl: avatarSupported ? profile.avatar_url || undefined : undefined,
           permissions,
         },
       },

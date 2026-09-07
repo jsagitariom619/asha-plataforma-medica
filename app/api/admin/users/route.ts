@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import {
-  ASHA_MODULES,
   deriveInternalPassword,
   initialsFromName,
   normalizeUsername,
@@ -75,6 +74,50 @@ async function rollbackCreatedUser(userId: string) {
     // Best-effort rollback only.
   }
   await deleteAuthUser(userId);
+}
+
+export async function GET(request: Request) {
+  try {
+    const accessToken = bearerToken(request);
+    if (!accessToken) return responseError("Sesión requerida.", 401);
+    const caller = await getCaller(accessToken);
+    if (!caller || !caller.is_active || !caller.is_primary_admin) {
+      return responseError("No tienes permiso para consultar usuarios.", 403);
+    }
+    let profilesResponse = await supabaseAdminFetch(
+      "/rest/v1/profiles?select=id,username,full_name,role,initials,is_active,is_primary_admin,avatar_url,created_at&order=created_at.asc",
+      { headers: { Accept: "application/json" } },
+    );
+    let avatarSupported = profilesResponse.ok;
+    if (!profilesResponse.ok) {
+      profilesResponse = await supabaseAdminFetch(
+        "/rest/v1/profiles?select=id,username,full_name,role,initials,is_active,is_primary_admin,created_at&order=created_at.asc",
+        { headers: { Accept: "application/json" } },
+      );
+      avatarSupported = false;
+    }
+    if (!profilesResponse.ok) return responseError("No se pudieron cargar los usuarios.", 503);
+    const profiles = await profilesResponse.json() as Array<Record<string, unknown>>;
+    const permissionsResponse = await supabaseAdminFetch(
+      "/rest/v1/user_permissions?select=user_id,module,allowed&allowed=eq.true",
+      { headers: { Accept: "application/json" } },
+    );
+    const permissionRows = permissionsResponse.ok ? await permissionsResponse.json() as Array<{user_id:string;module:string;allowed:boolean}> : [];
+    return NextResponse.json({ok:true,users:profiles.map(profile=>({
+      id:profile.id,
+      username:profile.username,
+      fullName:profile.full_name,
+      role:profile.role,
+      initials:profile.initials,
+      active:profile.is_active,
+      isPrimaryAdmin:profile.is_primary_admin,
+      avatarUrl:avatarSupported?profile.avatar_url:null,
+      permissions:permissionRows.filter(row=>row.user_id===profile.id&&row.allowed).map(row=>row.module),
+    }))},{headers:{"Cache-Control":"no-store"}});
+  } catch (error) {
+    console.error("ASHA admin users list error", error);
+    return responseError("No se pudieron cargar los usuarios.", 503);
+  }
 }
 
 export async function POST(request: Request) {
