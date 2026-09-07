@@ -8,32 +8,25 @@ const HISTORY_KEY="asha-aesthetic-histories-v1";
 const COMPLETED_KEY="asha-completed-consultations-v1";
 const LEGACY_STATUS_KEY="asha-clinical-demo-status-v2";
 
-type StoredSession={cloudUser?:{isPrimaryAdmin?:boolean}};
-
-type DemoStore={
-  users?:unknown[];
-  professionalName?:string;
-  [key:string]:unknown;
-};
+type StoredSession={userId?:number;cloudUser?:{isPrimaryAdmin?:boolean;role?:string}};
+type StoredUser={id?:number;role?:string;active?:boolean};
+type DemoStore={users?:StoredUser[];professionalName?:string;[key:string]:unknown};
 
 function isPrimaryAdmin(){
   try{
     const session=JSON.parse(localStorage.getItem("asha-session")||"null") as StoredSession|null;
-    return session?.cloudUser?.isPrimaryAdmin===true;
+    if(session?.cloudUser?.isPrimaryAdmin===true)return true;
+    if(String(session?.cloudUser?.role||"").toLowerCase().includes("admin"))return true;
+    const store=JSON.parse(localStorage.getItem(DEMO_KEY)||"null") as DemoStore|null;
+    const users=Array.isArray(store?.users)?store.users:[];
+    const first=users[0];
+    return Boolean(first&&first.active!==false&&session?.userId===first.id&&String(first.role||"").toLowerCase().includes("admin"));
   }catch{return false}
 }
 
 function clearOperationalTestData(){
   const current:DemoStore=(()=>{try{return JSON.parse(localStorage.getItem(DEMO_KEY)||"null")||{}}catch{return{}}})();
-  const clean:DemoStore={
-    ...current,
-    patients:[],
-    services:[],
-    products:[],
-    txs:[],
-    appointments:[],
-    attentions:[]
-  };
+  const clean:DemoStore={...current,patients:[],services:[],products:[],txs:[],appointments:[],attentions:[]};
   localStorage.setItem(DEMO_KEY,JSON.stringify(clean));
   localStorage.removeItem(HISTORY_KEY);
   localStorage.removeItem(COMPLETED_KEY);
@@ -52,8 +45,10 @@ export function TestDataReset(){
     };
     const observer=new MutationObserver(sync);
     observer.observe(document.body,{childList:true,subtree:true,characterData:true});
+    window.addEventListener("storage",sync);
+    window.addEventListener("focus",sync);
     sync();
-    return()=>observer.disconnect();
+    return()=>{observer.disconnect();window.removeEventListener("storage",sync);window.removeEventListener("focus",sync)};
   },[]);
 
   if(!visible)return null;
