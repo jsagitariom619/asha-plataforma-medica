@@ -9,8 +9,17 @@ type CompletedMap=Record<string,{completedAt:string;date:string}>;
 const COMPLETED_KEY="asha-completed-consultations-v1";
 const LEGACY_DEMO_MIGRATION_KEY="asha-clinical-demo-status-v2";
 const LEGACY_ATTENDED_NAMES=new Set(["María Fernanda López","Carlos Alberto Rojas","Ana Sofía Méndez"]);
-const todayKey=()=>{const now=new Date();return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`};
-const visitLabel=(iso:string)=>{const date=new Date(iso);return `Hoy, ${new Intl.DateTimeFormat("es-BO",{hour:"2-digit",minute:"2-digit",hour12:false}).format(date)}`};
+const BOLIVIA_TIME_ZONE="America/La_Paz";
+
+function boliviaDateKey(value:Date|string=new Date()){
+  const date=value instanceof Date?value:new Date(value);
+  if(Number.isNaN(date.getTime()))return"";
+  const parts=new Intl.DateTimeFormat("en-CA",{timeZone:BOLIVIA_TIME_ZONE,year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(date);
+  const read=(type:string)=>parts.find(part=>part.type===type)?.value||"";
+  return `${read("year")}-${read("month")}-${read("day")}`;
+}
+const todayKey=()=>boliviaDateKey(new Date());
+const visitLabel=(iso:string)=>{const date=new Date(iso);if(Number.isNaN(date.getTime()))return iso;return `Hoy, ${new Intl.DateTimeFormat("es-BO",{timeZone:BOLIVIA_TIME_ZONE,hour:"2-digit",minute:"2-digit",hour12:false}).format(date)}`};
 function readCompleted():CompletedMap{try{const value=JSON.parse(localStorage.getItem(COMPLETED_KEY)||"{}");return value&&typeof value==="object"?value:{}}catch{return{}}}
 function writeCompleted(value:CompletedMap){try{localStorage.setItem(COMPLETED_KEY,JSON.stringify(value))}catch{}}
 
@@ -42,7 +51,7 @@ function persistCompletion(patientName:string,completedAt:string){
     const stored=JSON.parse(localStorage.getItem("asha-demo")||"null")||{};
     const patients:Array<Patient>=Array.isArray(stored.patients)?stored.patients:[];
     const appointments:Array<Appointment>=Array.isArray(stored.appointments)?stored.appointments:[];
-    const date=todayKey(),label=visitLabel(completedAt);
+    const date=boliviaDateKey(completedAt)||todayKey(),label=visitLabel(completedAt);
     let changed=false;
     const nextPatients=patients.map(patient=>{if(patient.name!==patientName)return patient;if(patient.status==="Atendido"&&patient.lastVisit===label)return patient;changed=true;return{...patient,status:"Atendido",lastVisit:label}});
     const candidates=appointments.map((appointment,index)=>({appointment,index})).filter(({appointment})=>appointment.patient===patientName&&appointment.date===date&&appointment.status!=="Atendido"&&appointment.status!=="Anulado");
@@ -55,7 +64,7 @@ function persistCompletion(patientName:string,completedAt:string){
 function syncDom(){
   const completed=readCompleted(),today=todayKey();
   document.querySelectorAll<HTMLElement>(".person").forEach(row=>{const name=row.querySelector("b")?.textContent?.trim();if(!name)return;const item=completed[name];if(!item)return;const tag=row.querySelector<HTMLElement>(".tag");if(tag&&tag.textContent!=="Atendido")tag.textContent="Atendido";const directSmalls=Array.from(row.children).filter(el=>el.tagName==="SMALL") as HTMLElement[];const last=directSmalls[directSmalls.length-1],label=visitLabel(item.completedAt);if(last&&last.textContent!==label)last.textContent=label});
-  document.querySelectorAll<HTMLElement>(".agenda > div").forEach(row=>{const name=row.querySelector("b")?.textContent?.trim();if(!name)return;const item=completed[name];if(!item||item.date!==today)return;const tag=row.querySelector<HTMLElement>("em.tag");if(tag&&tag.textContent!=="Anulado"&&tag.textContent!=="Atendido")tag.textContent="Atendido"});
+  document.querySelectorAll<HTMLElement>(".agenda > div").forEach(row=>{const name=row.querySelector("b")?.textContent?.trim();if(!name)return;const item=completed[name];if(!item||boliviaDateKey(item.completedAt)!==today)return;const tag=row.querySelector<HTMLElement>("em.tag");if(tag&&tag.textContent!=="Anulado"&&tag.textContent!=="Atendido")tag.textContent="Atendido"});
 }
 
 function syncLegacyDemoDom(){
@@ -68,7 +77,7 @@ export function ClinicalStatusSync(){
     migrateLegacyDemoStatuses();
     let timer:number|undefined;
     const reconcile=()=>{window.clearTimeout(timer);timer=window.setTimeout(()=>{const completed=readCompleted();Object.entries(completed).forEach(([name,item])=>persistCompletion(name,item.completedAt));syncLegacyDemoDom();syncDom()},40)};
-    const onSubmit=(event:Event)=>{const form=event.target as HTMLFormElement|null;if(!form?.classList.contains("aesthetic-history-form"))return;const data=new FormData(form),patient=String(data.get("patient")||"").trim();if(!patient)return;const completedAt=new Date().toISOString(),completed=readCompleted();completed[patient]={completedAt,date:todayKey()};writeCompleted(completed);window.setTimeout(()=>{persistCompletion(patient,completedAt);syncLegacyDemoDom();syncDom();window.dispatchEvent(new CustomEvent("asha-clinical-completed",{detail:{patient}}))},120)};
+    const onSubmit=(event:Event)=>{const form=event.target as HTMLFormElement|null;if(!form?.classList.contains("aesthetic-history-form"))return;const data=new FormData(form),patient=String(data.get("patient")||"").trim();if(!patient)return;const completedAt=new Date().toISOString(),completed=readCompleted();completed[patient]={completedAt,date:boliviaDateKey(completedAt)};writeCompleted(completed);window.setTimeout(()=>{persistCompletion(patient,completedAt);syncLegacyDemoDom();syncDom();window.dispatchEvent(new CustomEvent("asha-clinical-completed",{detail:{patient}}))},120)};
     document.addEventListener("submit",onSubmit,true);
     const observer=new MutationObserver(reconcile);observer.observe(document.body,{childList:true,subtree:true,characterData:true});syncLegacyDemoDom();syncDom();
     return()=>{document.removeEventListener("submit",onSubmit,true);observer.disconnect();window.clearTimeout(timer)};
