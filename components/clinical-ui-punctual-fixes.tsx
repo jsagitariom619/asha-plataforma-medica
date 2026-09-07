@@ -5,12 +5,7 @@ import {useEffect} from "react";
 export function ClinicalUiPunctualFixes(){
   useEffect(()=>{
     const openPatientFromHistory=(name:string)=>{
-      const patientsNav=Array.from(document.querySelectorAll<HTMLButtonElement>(".sidebar nav button")).find(button=>button.textContent?.trim().startsWith("Pacientes"));
-      patientsNav?.click();
-      window.setTimeout(()=>{
-        const row=Array.from(document.querySelectorAll<HTMLElement>(".person")).find(item=>item.querySelector("b")?.textContent?.trim()===name);
-        row?.click();
-      },100);
+      window.dispatchEvent(new CustomEvent("asha-open-patient-profile",{detail:{patient:name,source:"Historias clínicas"}}));
     };
     const enhance=()=>{
       const section=document.querySelector(".app>main>header h1")?.textContent?.trim();
@@ -20,7 +15,7 @@ export function ClinicalUiPunctualFixes(){
       document.querySelectorAll<HTMLElement>("article.record").forEach(card=>{
         const edit=card.querySelector<HTMLButtonElement>("[data-asha-edit-history]");
         const evolution=Array.from(card.querySelectorAll<HTMLButtonElement>("button")).find(button=>(button.textContent||"").includes("Registrar evolución"));
-        const newAttention=Array.from(card.querySelectorAll<HTMLButtonElement>("button")).find(button=>(button.textContent||"").includes("Nueva atención"));
+        const newAttention=Array.from(card.querySelectorAll<HTMLButtonElement>("button")).find(button=>(button.textContent||"").includes("Nueva atención")||(button.textContent||"").includes("Ver expediente"));
         if(edit){if(edit.textContent?.trim()!=="Modificar historia clínica")edit.textContent="Modificar historia clínica";edit.setAttribute("aria-label","Modificar historia clínica");edit.classList.add("asha-record-edit-action")}
         if(evolution){evolution.setAttribute("aria-label","Registrar evolución");evolution.classList.add("asha-record-evolution-action")}
         if(newAttention&&!newAttention.dataset.ashaHistoryRedirect){
