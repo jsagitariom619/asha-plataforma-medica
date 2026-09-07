@@ -44,3 +44,34 @@
 
 /* La X es redundante porque el scrim ya cierra el menú al tocar fuera. */
 .brand > button[aria-label="Cerrar menú"]{display:none!important}
+
+/* Ajuste visual puntual del listado de Pacientes.
+   La nueva acción clínica conserva la jerarquía, ritmo y alineación del diseño original. */
+.person{
+  grid-template-columns:38px minmax(0,1fr) auto 92px auto;
+}
+.person>button{
+  justify-self:end;
+  width:auto;
+  min-width:112px;
+  height:34px;
+  padding:0 12px;
+  white-space:nowrap;
+  border-radius:9px;
+  font-size:11px;
+  font-weight:700;
+  line-height:1;
+}
+
+@media(max-width:760px){
+  .person{
+    grid-template-columns:38px minmax(0,1fr) auto;
+  }
+  .person>button{
+    grid-column:2 / 4;
+    justify-self:end;
+    min-width:108px;
+    height:32px;
+    margin-top:2px;
+  }
+}
