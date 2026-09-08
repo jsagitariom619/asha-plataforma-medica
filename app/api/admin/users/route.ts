@@ -8,6 +8,7 @@ import {
   supabaseAdminFetch,
   supabaseAuthFetch,
 } from "@/lib/supabase/server-rest";
+import { readAccessToken } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -78,14 +79,14 @@ async function rollbackCreatedUser(userId: string) {
 
 export async function GET(request: Request) {
   try {
-    const accessToken = bearerToken(request);
+    const accessToken = bearerToken(request) || await readAccessToken() || "";
     if (!accessToken) return responseError("Sesión requerida.", 401);
     const caller = await getCaller(accessToken);
     if (!caller || !caller.is_active || !caller.is_primary_admin) {
       return responseError("No tienes permiso para consultar usuarios.", 403);
     }
     let profilesResponse = await supabaseAdminFetch(
-      "/rest/v1/profiles?select=id,username,full_name,role,initials,is_active,is_primary_admin,avatar_url,created_at&order=created_at.asc",
+      "/rest/v1/profiles?select=id,username,full_name,role,initials,is_active,is_primary_admin,avatar_url,contact_email,created_at&order=created_at.asc",
       { headers: { Accept: "application/json" } },
     );
     let avatarSupported = profilesResponse.ok;
@@ -112,6 +113,7 @@ export async function GET(request: Request) {
       active:profile.is_active,
       isPrimaryAdmin:profile.is_primary_admin,
       avatarUrl:avatarSupported?profile.avatar_url:null,
+      email:profile.contact_email,
       permissions:permissionRows.filter(row=>row.user_id===profile.id&&row.allowed).map(row=>row.module),
     }))},{headers:{"Cache-Control":"no-store"}});
   } catch (error) {
@@ -124,7 +126,7 @@ export async function POST(request: Request) {
   let createdUserId = "";
 
   try {
-    const accessToken = bearerToken(request);
+    const accessToken = bearerToken(request) || await readAccessToken() || "";
     if (!accessToken) return responseError("Sesión requerida.", 401);
 
     const caller = await getCaller(accessToken);

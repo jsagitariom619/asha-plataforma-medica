@@ -15,6 +15,11 @@ export async function readAccessToken(): Promise<string | null> {
   return store.get(ACCESS_COOKIE)?.value ?? null;
 }
 
+export async function readRefreshToken(): Promise<string | null> {
+  const store = await cookies();
+  return store.get(REFRESH_COOKIE)?.value ?? null;
+}
+
 export async function getAuthenticatedUser(): Promise<AuthUser | null> {
   const accessToken = await readAccessToken();
   if (!accessToken) return null;

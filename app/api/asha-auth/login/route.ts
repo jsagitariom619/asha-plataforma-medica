@@ -6,6 +6,7 @@ import {
   supabaseAdminFetch,
   supabaseAuthFetch,
 } from "@/lib/supabase/server-rest";
+import { setSessionCookies } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,9 @@ function fail(message: string, status = 400) {
   );
 }
 
-function unwrapAuthUser(value: Record<string, unknown>): Record<string, unknown> {
+function unwrapAuthUser(
+  value: Record<string, unknown>,
+): Record<string, unknown> {
   const nested = value.user;
   return nested && typeof nested === "object"
     ? (nested as Record<string, unknown>)
@@ -25,7 +28,10 @@ function unwrapAuthUser(value: Record<string, unknown>): Record<string, unknown>
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { username?: unknown; pin?: unknown };
+    const body = (await request.json()) as {
+      username?: unknown;
+      pin?: unknown;
+    };
     const username = normalizeUsername(
       typeof body.username === "string" ? body.username : "",
     );
@@ -71,7 +77,8 @@ export async function POST(request: Request) {
       `/auth/v1/admin/users/${encodeURIComponent(profile.id)}`,
       { headers: { Accept: "application/json" } },
     );
-    if (!authUserResponse.ok) return fail("Usuario o PIN/contraseña incorrectos.", 401);
+    if (!authUserResponse.ok)
+      return fail("Usuario o PIN/contraseña incorrectos.", 401);
 
     const authPayload = await readJsonSafe(authUserResponse);
     const authUser = unwrapAuthUser(authPayload);
@@ -100,7 +107,10 @@ export async function POST(request: Request) {
         username,
         isInternalUser,
         status: tokenResponse.status,
-        code: typeof details.error_code === "string" ? details.error_code : undefined,
+        code:
+          typeof details.error_code === "string"
+            ? details.error_code
+            : undefined,
       });
       return fail("Usuario o PIN/contraseña incorrectos.", 401);
     }
@@ -111,34 +121,39 @@ export async function POST(request: Request) {
       { headers: { Accept: "application/json" } },
     );
     if (permissionResponse.ok) {
-      const rows = (await permissionResponse.json()) as Array<{ module?: string; allowed?: boolean }>;
+      const rows = (await permissionResponse.json()) as Array<{
+        module?: string;
+        allowed?: boolean;
+      }>;
       permissions = rows
-        .filter(row => row.allowed === true && typeof row.module === "string")
-        .map(row => String(row.module));
+        .filter((row) => row.allowed === true && typeof row.module === "string")
+        .map((row) => String(row.module));
     }
 
     const session = await readJsonSafe(tokenResponse);
-    return NextResponse.json(
+    const output = NextResponse.json(
       {
         ok: true,
-        session: {
-          accessToken: session.access_token,
-          refreshToken: session.refresh_token,
-          expiresIn: session.expires_in,
-          tokenType: session.token_type,
-        },
         user: {
           id: profile.id,
           username: profile.username,
           fullName: profile.full_name,
           role: profile.role,
           isPrimaryAdmin: profile.is_primary_admin,
-          avatarUrl: avatarSupported ? profile.avatar_url || undefined : undefined,
+          avatarUrl: avatarSupported
+            ? profile.avatar_url || undefined
+            : undefined,
           permissions,
         },
       },
       { headers: { "Cache-Control": "no-store" } },
     );
+    setSessionCookies(output, {
+      access_token: String(session.access_token || ""),
+      refresh_token: String(session.refresh_token || ""),
+      expires_in: Number(session.expires_in) || 3600,
+    });
+    return output;
   } catch (error) {
     console.error("ASHA login error", error);
     return fail("El acceso seguro todavía no está disponible.", 503);

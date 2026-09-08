@@ -1,54 +1,1122 @@
 "use client";
 
-import {ChangeEvent,FormEvent,useEffect,useMemo,useRef,useState} from "react";
-import {CalendarDays,Camera,FileHeart,ImagePlus,Save,Trash2,X} from "lucide-react";
+import { runtimeStore } from "@/lib/client/runtime-store";
+import {
+  ChangeEvent,
+  FormEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  CalendarDays,
+  Camera,
+  FileHeart,
+  ImagePlus,
+  Save,
+  Trash2,
+  X,
+} from "lucide-react";
 
-type Patient={id:number;name:string;code?:string;age?:number;phone?:string};
-type HistoryRecord={id:number;createdAt:string;patient:string;patientCode:string;data:Record<string,string|string[]>};
-type Appointment={id:number;date:string;time:string;patient:string;service:string;status:string};
-type Mode="history"|"evolution"|null;
+type Patient = {
+  id: number;
+  name: string;
+  code?: string;
+  age?: number;
+  phone?: string;
+};
+type HistoryRecord = {
+  id: number;
+  createdAt: string;
+  patient: string;
+  patientCode: string;
+  data: Record<string, string | string[]>;
+};
+type Appointment = {
+  id: number;
+  date: string;
+  time: string;
+  patient: string;
+  service: string;
+  status: string;
+};
+type Mode = "history" | "evolution" | null;
 
-const STORAGE_KEY="asha-aesthetic-histories-v1";
-const BOLIVIA_TZ="America/La_Paz";
-const relevantHistory=[
-  ["allergies","Alergias conocidas"],["anticoagulants","Anticoagulantes / antiagregantes"],["autoimmune","Enfermedad autoinmune"],
-  ["immunosuppression","Inmunosupresión"],["herpes","Antecedente de herpes simple"],["keloids","Queloides / cicatrización hipertrófica"],
-  ["pregnancy","Embarazo / lactancia"],["isotretinoin","Uso reciente de isotretinoína"],["infection","Infección activa / lesión cutánea"],
-  ["implants","Implantes, prótesis o dispositivos"],["oncology","Antecedente oncológico"],["neuromuscular","Enfermedad neuromuscular"]
+const STORAGE_KEY = "asha-aesthetic-histories-v1";
+const BOLIVIA_TZ = "America/La_Paz";
+const relevantHistory = [
+  ["allergies", "Alergias conocidas"],
+  ["anticoagulants", "Anticoagulantes / antiagregantes"],
+  ["autoimmune", "Enfermedad autoinmune"],
+  ["immunosuppression", "Inmunosupresión"],
+  ["herpes", "Antecedente de herpes simple"],
+  ["keloids", "Queloides / cicatrización hipertrófica"],
+  ["pregnancy", "Embarazo / lactancia"],
+  ["isotretinoin", "Uso reciente de isotretinoína"],
+  ["infection", "Infección activa / lesión cutánea"],
+  ["implants", "Implantes, prótesis o dispositivos"],
+  ["oncology", "Antecedente oncológico"],
+  ["neuromuscular", "Enfermedad neuromuscular"],
 ] as const;
 
-function readPatients():Patient[]{try{const data=JSON.parse(localStorage.getItem("asha-demo")||"null");return Array.isArray(data?.patients)?data.patients:[]}catch{return[]}}
-function readHistories():HistoryRecord[]{try{const value=JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]");return Array.isArray(value)?value:[]}catch{return[]}}
-function writeHistories(rows:HistoryRecord[]){localStorage.setItem(STORAGE_KEY,JSON.stringify(rows))}
-function readTreatingProfessional(){try{const data=JSON.parse(localStorage.getItem("asha-demo")||"null")||{},session=JSON.parse(localStorage.getItem("asha-session")||"null")||{};const owner=String(data?.professionalName||data?.users?.[0]?.name||"").trim();if(owner)return owner;const cloudName=String(session?.cloudUser?.fullName||"").trim();return cloudName}catch{return""}}
-const text=(form:FormData,name:string)=>String(form.get(name)||"").trim();
-const value=(record:HistoryRecord|null,key:string)=>{const raw=record?.data?.[key];return Array.isArray(raw)?raw.join(", "):String(raw||"")};
-const todayBolivia=()=>{const parts=new Intl.DateTimeFormat("en-CA",{timeZone:BOLIVIA_TZ,year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());const map=Object.fromEntries(parts.map(part=>[part.type,part.value]));return `${map.year}-${map.month}-${map.day}`};
-function findInitial(patient:string){return readHistories().filter(row=>row.patient===patient&&!["evolution","treatment"].includes(String(row.data?.recordType||""))).sort((a,b)=>new Date(a.createdAt).getTime()-new Date(b.createdAt).getTime())[0]||null}
-
-async function preparePhoto(file:File){const source=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||""));reader.onerror=()=>reject(new Error());reader.readAsDataURL(file)});return await new Promise<string>((resolve,reject)=>{const image=new Image();image.onload=()=>{const max=1280,scale=Math.min(1,max/Math.max(image.width,image.height)),canvas=document.createElement("canvas");canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));const ctx=canvas.getContext("2d");if(!ctx){reject(new Error());return}ctx.drawImage(image,0,0,canvas.width,canvas.height);resolve(canvas.toDataURL("image/jpeg",.78))};image.onerror=()=>reject(new Error());image.src=source})}
-function addFollowUpToAgenda(appointment:Appointment){try{const data=JSON.parse(localStorage.getItem("asha-demo")||"null")||{},appointments:Array<Appointment>=Array.isArray(data.appointments)?data.appointments:[];const duplicate=appointments.some(item=>item.date===appointment.date&&item.time===appointment.time&&item.patient===appointment.patient&&item.service===appointment.service);if(!duplicate)localStorage.setItem("asha-demo",JSON.stringify({...data,appointments:[appointment,...appointments]}))}catch{}}
-
-export function AestheticHistoryCompat(){
-  const[mode,setMode]=useState<Mode>(null),[patients,setPatients]=useState<Patient[]>([]),[preselected,setPreselected]=useState(""),[initial,setInitial]=useState<HistoryRecord|null>(null),[saved,setSaved]=useState(false),[saveError,setSaveError]=useState("");
-  const[beforePhoto,setBeforePhoto]=useState(""),[afterPhoto,setAfterPhoto]=useState("");
-  const open=(nextMode:Exclude<Mode,null>,patient="")=>{setPatients(readPatients());setPreselected(patient);const existing=patient?findInitial(patient):null;setInitial(existing);setBeforePhoto(nextMode==="history"?value(existing,"beforePhoto"):"");setAfterPhoto(nextMode==="history"?value(existing,"afterPhoto"):"");setSaved(false);setSaveError("");setMode(nextMode)};
-  useEffect(()=>{const onClick=(event:MouseEvent)=>{const target=event.target as HTMLElement|null,button=target?.closest("button");if(!button)return;const label=(button.textContent||"").replace(/\s+/g," ").trim();if(label!=="Nueva historia"&&label!=="Registrar evolución")return;event.preventDefault();event.stopPropagation();const patient=label==="Registrar evolución"?button.closest("article")?.querySelector("h3")?.textContent?.trim()||"":"";open(label==="Registrar evolución"?"evolution":"history",patient)};const onEdit=(event:Event)=>{const patient=(event as CustomEvent<{patient?:string}>).detail?.patient||"";if(patient)open("history",patient)};const onEvolution=(event:Event)=>{const detail=(event as CustomEvent<{patient?:string;mode?:string}>).detail;if(detail?.patient&&detail.mode==="evolution")open("evolution",detail.patient)};document.addEventListener("click",onClick,true);window.addEventListener("asha-edit-clinical-history",onEdit as EventListener);window.addEventListener("asha-open-aesthetic-history",onEvolution as EventListener);return()=>{document.removeEventListener("click",onClick,true);window.removeEventListener("asha-edit-clinical-history",onEdit as EventListener);window.removeEventListener("asha-open-aesthetic-history",onEvolution as EventListener)}},[]);
-  useEffect(()=>{if(!mode)return;const onKey=(event:KeyboardEvent)=>{if(event.key==="Escape")setMode(null)};document.addEventListener("keydown",onKey);return()=>document.removeEventListener("keydown",onKey)},[mode]);
-  const selectedPatient=useMemo(()=>patients.find(p=>p.name===preselected),[patients,preselected]);
-  if(!mode)return null;
-
-  const submitHistory=(event:FormEvent<HTMLFormElement>)=>{event.preventDefault();setSaveError("");const form=new FormData(event.currentTarget),patient=text(form,"patient"),patientInfo=patients.find(p=>p.name===patient);if(!patient){setSaveError("Selecciona un paciente.");return}const checks=relevantHistory.filter(([key])=>form.get(key)==="on").map(([,label])=>label),rows=readHistories(),existing=findInitial(patient);const data:Record<string,string|string[]>={...(existing?.data||{}),recordType:"initial",consultationDate:text(form,"consultationDate"),professional:text(form,"professional"),reason:text(form,"reason"),expectations:text(form,"expectations"),pathological:text(form,"pathological"),surgical:text(form,"surgical"),hospitalizations:text(form,"hospitalizations"),medications:text(form,"medications"),allergyDetail:text(form,"allergyDetail"),gynecologic:text(form,"gynecologic"),habits:text(form,"habits"),sunExposure:text(form,"sunExposure"),relevantHistory:checks,otherRelevant:text(form,"otherRelevant"),priorAesthetic:text(form,"priorAesthetic"),priorBotulinum:text(form,"priorBotulinum"),priorFillers:text(form,"priorFillers"),priorBiostimulators:text(form,"priorBiostimulators"),priorDevices:text(form,"priorDevices"),priorComplications:text(form,"priorComplications"),bloodPressure:text(form,"bloodPressure"),heartRate:text(form,"heartRate"),weight:text(form,"weight"),height:text(form,"height"),fitzpatrick:text(form,"fitzpatrick"),glogau:text(form,"glogau"),skinType:text(form,"skinType"),skinFindings:text(form,"skinFindings"),facialAnalysis:text(form,"facialAnalysis"),bodyAnalysis:text(form,"bodyAnalysis"),assessment:text(form,"assessment"),diagnosis:text(form,"diagnosis"),objectives:text(form,"objectives"),treatmentPlan:text(form,"treatmentPlan"),alternatives:text(form,"alternatives"),informedConsent:text(form,"informedConsent"),photoAuthorization:text(form,"photoAuthorization"),finalNotes:text(form,"finalNotes"),beforePhoto,afterPhoto};const record:HistoryRecord=existing?{...existing,patientCode:patientInfo?.code||existing.patientCode,data}:{id:Date.now(),createdAt:new Date().toISOString(),patient,patientCode:patientInfo?.code||"",data};try{writeHistories(existing?rows.map(row=>row.id===existing.id?record:row):[record,...rows]);setSaved(true);window.dispatchEvent(new CustomEvent("asha-clinical-completed",{detail:{patient}}));setTimeout(()=>setMode(null),800)}catch{setSaveError("No se pudo guardar la historia clínica.")}};
-
-  const submitEvolution=(event:FormEvent<HTMLFormElement>)=>{event.preventDefault();setSaveError("");const form=new FormData(event.currentTarget),patient=text(form,"patient"),patientInfo=patients.find(p=>p.name===patient),nextControl=text(form,"nextControl"),nextControlTime=text(form,"nextControlTime");if(!patient){setSaveError("Selecciona un paciente.");return}const record:HistoryRecord={id:Date.now(),createdAt:new Date().toISOString(),patient,patientCode:patientInfo?.code||"",data:{recordType:"evolution",consultationDate:text(form,"consultationDate"),professional:text(form,"professional"),procedure:text(form,"procedure"),areas:text(form,"areas"),evolution:text(form,"evolution"),adverseEvents:text(form,"adverseEvents"),postCare:text(form,"postCare"),nextControl,nextControlTime,finalNotes:text(form,"finalNotes"),beforePhoto,afterPhoto}};try{writeHistories([record,...readHistories()]);if(nextControl)addFollowUpToAgenda({id:Date.now()+1,date:nextControl,time:nextControlTime||"—",patient,service:`Control · ${text(form,"procedure")||"Evolución"}`,status:"Pendiente"});setSaved(true);window.dispatchEvent(new CustomEvent("asha-clinical-completed",{detail:{patient}}));setTimeout(()=>setMode(null),800)}catch{setSaveError("No se pudo guardar la evolución.")}};
-
-  return <div className="aesthetic-history-layer" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setMode(null)}}><section className="aesthetic-history-dialog" role="dialog" aria-modal="true" aria-labelledby="aesthetic-history-title"><header className="aesthetic-history-header"><div><span className="aesthetic-history-icon"><FileHeart/></span><div><h2 id="aesthetic-history-title">{mode==="history"?"Historia clínica de medicina estética":"Registrar evolución"}</h2><p>{mode==="history"?"Historia clínica única del paciente. Los cambios actualizan el mismo registro.":"Agrega únicamente la evolución y seguimiento de esta atención."}</p></div></div><button type="button" aria-label="Cerrar" onClick={()=>setMode(null)}><X/></button></header>{mode==="history"?<HistoryForm patients={patients} preselected={preselected} selectedPatient={selectedPatient} initial={initial} beforePhoto={beforePhoto} afterPhoto={afterPhoto} setBeforePhoto={setBeforePhoto} setAfterPhoto={setAfterPhoto} submit={submitHistory} saved={saved} saveError={saveError}/>:<EvolutionForm patients={patients} preselected={preselected} selectedPatient={selectedPatient} beforePhoto={beforePhoto} afterPhoto={afterPhoto} setBeforePhoto={setBeforePhoto} setAfterPhoto={setAfterPhoto} submit={submitEvolution} saved={saved} saveError={saveError}/>}</section></div>;
+function readPatients(): Patient[] {
+  try {
+    const data = JSON.parse(runtimeStore.getItem("asha-demo") || "null");
+    return Array.isArray(data?.patients) ? data.patients : [];
+  } catch {
+    return [];
+  }
+}
+function readHistories(): HistoryRecord[] {
+  try {
+    const value = JSON.parse(runtimeStore.getItem(STORAGE_KEY) || "[]");
+    return Array.isArray(value) ? value : [];
+  } catch {
+    return [];
+  }
+}
+function writeHistories(rows: HistoryRecord[]) {
+  runtimeStore.setItem(STORAGE_KEY, JSON.stringify(rows));
+}
+function readTreatingProfessional() {
+  try {
+    const data = JSON.parse(runtimeStore.getItem("asha-demo") || "null") || {};
+    const owner = String(
+      data?.professionalName || data?.users?.[0]?.name || "",
+    ).trim();
+    return owner;
+  } catch {
+    return "";
+  }
+}
+const text = (form: FormData, name: string) =>
+  String(form.get(name) || "").trim();
+const value = (record: HistoryRecord | null, key: string) => {
+  const raw = record?.data?.[key];
+  return Array.isArray(raw) ? raw.join(", ") : String(raw || "");
+};
+const todayBolivia = () => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: BOLIVIA_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${map.year}-${map.month}-${map.day}`;
+};
+function findInitial(patient: string) {
+  return (
+    readHistories()
+      .filter(
+        (row) =>
+          row.patient === patient &&
+          !["evolution", "treatment"].includes(
+            String(row.data?.recordType || ""),
+          ),
+      )
+      .sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      )[0] || null
+  );
 }
 
-function HistoryForm({patients,preselected,selectedPatient,initial,beforePhoto,afterPhoto,setBeforePhoto,setAfterPhoto,submit,saved,saveError}:{patients:Patient[];preselected:string;selectedPatient?:Patient;initial:HistoryRecord|null;beforePhoto:string;afterPhoto:string;setBeforePhoto:(v:string)=>void;setAfterPhoto:(v:string)=>void;submit:(e:FormEvent<HTMLFormElement>)=>void;saved:boolean;saveError:string}){const d=(key:string)=>value(initial,key);const checks=Array.isArray(initial?.data?.relevantHistory)?initial?.data?.relevantHistory as string[]:[];const professional=d("professional")||readTreatingProfessional();return <form className="aesthetic-history-form" onSubmit={submit}><HistorySection title="1. Identificación y consulta" text="Datos generales de la historia clínica inicial."><div className="history-grid history-grid-3"><HistoryField label="Paciente"><select name="patient" defaultValue={preselected}><option value="">Sin seleccionar</option>{patients.map(p=><option key={p.id} value={p.name}>{p.name}{p.code?` · ${p.code}`:""}</option>)}</select></HistoryField><HistoryField label="Fecha"><input name="consultationDate" type="date" defaultValue={d("consultationDate")||todayBolivia()}/></HistoryField><HistoryField label="Profesional tratante"><input name="professional" defaultValue={professional} readOnly/></HistoryField></div>{selectedPatient&&<p className="history-patient-note">{selectedPatient.code||"Sin código"}{selectedPatient.age?` · ${selectedPatient.age} años`:""}{selectedPatient.phone?` · ${selectedPatient.phone}`:""}</p>}<div className="history-grid"><HistoryField label="Motivo de consulta"><textarea name="reason" rows={3} defaultValue={d("reason")}/></HistoryField><HistoryField label="Expectativas y objetivos"><textarea name="expectations" rows={3} defaultValue={d("expectations")}/></HistoryField></div></HistorySection><HistorySection title="2. Antecedentes médicos y factores de riesgo" text="Antecedentes permanentes y alertas relevantes para procedimientos estéticos."><div className="history-grid"><HistoryField label="Antecedentes patológicos"><textarea name="pathological" rows={3} defaultValue={d("pathological")}/></HistoryField><HistoryField label="Antecedentes quirúrgicos"><textarea name="surgical" rows={3} defaultValue={d("surgical")}/></HistoryField><HistoryField label="Hospitalizaciones / procedimientos previos"><textarea name="hospitalizations" rows={3} defaultValue={d("hospitalizations")}/></HistoryField><HistoryField label="Medicamentos y suplementos"><textarea name="medications" rows={3} defaultValue={d("medications")}/></HistoryField><HistoryField label="Alergias: detalle"><textarea name="allergyDetail" rows={3} defaultValue={d("allergyDetail")}/></HistoryField><HistoryField label="Antecedentes gineco-obstétricos"><textarea name="gynecologic" rows={3} defaultValue={d("gynecologic")}/></HistoryField><HistoryField label="Hábitos"><textarea name="habits" rows={3} defaultValue={d("habits")}/></HistoryField><HistoryField label="Exposición solar / fotoprotección"><textarea name="sunExposure" rows={3} defaultValue={d("sunExposure")}/></HistoryField></div><div className="history-checks">{relevantHistory.map(([key,label])=><label key={key}><input type="checkbox" name={key} defaultChecked={checks.includes(label)}/><span>{label}</span></label>)}</div><HistoryField label="Otros antecedentes relevantes"><textarea name="otherRelevant" rows={3} defaultValue={d("otherRelevant")}/></HistoryField></HistorySection><HistorySection title="3. Antecedentes estéticos" text="Procedimientos previos y respuesta clínica."><div className="history-grid"><HistoryField label="Tratamientos estéticos previos"><textarea name="priorAesthetic" rows={3} defaultValue={d("priorAesthetic")}/></HistoryField><HistoryField label="Toxina botulínica"><textarea name="priorBotulinum" rows={3} defaultValue={d("priorBotulinum")}/></HistoryField><HistoryField label="Rellenos / ácido hialurónico"><textarea name="priorFillers" rows={3} defaultValue={d("priorFillers")}/></HistoryField><HistoryField label="Bioestimuladores / hilos"><textarea name="priorBiostimulators" rows={3} defaultValue={d("priorBiostimulators")}/></HistoryField><HistoryField label="Láser / IPL / RF / peelings"><textarea name="priorDevices" rows={3} defaultValue={d("priorDevices")}/></HistoryField><HistoryField label="Complicaciones previas"><textarea name="priorComplications" rows={3} defaultValue={d("priorComplications")}/></HistoryField></div></HistorySection><HistorySection title="4. Evaluación clínica estética" text="Evaluación basal que puede actualizarse cuando sea necesario."><div className="history-grid history-grid-4"><HistoryField label="Presión arterial"><input name="bloodPressure" defaultValue={d("bloodPressure")}/></HistoryField><HistoryField label="Frecuencia cardiaca"><input name="heartRate" defaultValue={d("heartRate")}/></HistoryField><HistoryField label="Peso"><input name="weight" defaultValue={d("weight")}/></HistoryField><HistoryField label="Talla"><input name="height" defaultValue={d("height")}/></HistoryField></div><div className="history-grid history-grid-3"><HistoryField label="Fototipo Fitzpatrick"><select name="fitzpatrick" defaultValue={d("fitzpatrick")}><option value="">No registrado</option>{["I","II","III","IV","V","VI"].map(v=><option key={v}>{v}</option>)}</select></HistoryField><HistoryField label="Clasificación de Glogau"><select name="glogau" defaultValue={d("glogau")}><option value="">No registrado</option><option>I · Leve</option><option>II · Moderado</option><option>III · Avanzado</option><option>IV · Severo</option></select></HistoryField><HistoryField label="Tipo / condición de piel"><input name="skinType" defaultValue={d("skinType")}/></HistoryField></div><div className="history-grid"><HistoryField label="Hallazgos cutáneos"><textarea name="skinFindings" rows={4} defaultValue={d("skinFindings")}/></HistoryField><HistoryField label="Análisis facial"><textarea name="facialAnalysis" rows={4} defaultValue={d("facialAnalysis")}/></HistoryField><HistoryField label="Análisis corporal"><textarea name="bodyAnalysis" rows={4} defaultValue={d("bodyAnalysis")}/></HistoryField></div></HistorySection><HistorySection title="5. Impresión clínica y planificación" text="Diagnóstico, objetivos y plan general del paciente."><div className="history-grid"><HistoryField label="Valoración estética integral"><textarea name="assessment" rows={4} defaultValue={d("assessment")}/></HistoryField><HistoryField label="Diagnóstico / impresión diagnóstica"><textarea name="diagnosis" rows={4} defaultValue={d("diagnosis")}/></HistoryField><HistoryField label="Objetivos terapéuticos"><textarea name="objectives" rows={4} defaultValue={d("objectives")}/></HistoryField><HistoryField label="Plan de tratamiento"><textarea name="treatmentPlan" rows={4} defaultValue={d("treatmentPlan")}/></HistoryField><HistoryField label="Alternativas explicadas"><textarea name="alternatives" rows={3} defaultValue={d("alternatives")}/></HistoryField></div></HistorySection><HistorySection title="6. Documentación" text="Consentimientos, observaciones y registro fotográfico basal."><div className="history-grid history-grid-2"><HistoryField label="Consentimiento informado"><select name="informedConsent" defaultValue={d("informedConsent")}><option value="">No registrado</option><option>Firmado</option><option>Explicado / pendiente de firma</option><option>No aplica</option></select></HistoryField><HistoryField label="Autorización para fotografías"><select name="photoAuthorization" defaultValue={d("photoAuthorization")}><option value="">No registrado</option><option>Autorizada para historia clínica</option><option>Autorizada para uso científico / educativo</option><option>No autorizada</option></select></HistoryField></div><HistoryField label="Observaciones finales"><textarea name="finalNotes" rows={4} defaultValue={d("finalNotes")}/></HistoryField><div className="history-photo-grid"><PhotoSlot label="Foto basal 1" value={beforePhoto} onChange={setBeforePhoto}/><PhotoSlot label="Foto basal 2" value={afterPhoto} onChange={setAfterPhoto}/></div></HistorySection><footer className="aesthetic-history-actions"><span>{saveError||(saved?"Historia clínica actualizada correctamente":"Existe una sola historia clínica por paciente.")}</span><button type="button" className="history-secondary" onClick={()=>document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape"}))}>Cancelar</button><button type="submit" className="history-primary"><Save/>{initial?"Guardar cambios":"Crear historia clínica"}</button></footer></form>}
+async function preparePhoto(file: File) {
+  const source = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error());
+    reader.readAsDataURL(file);
+  });
+  return await new Promise<string>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const max = 1280,
+        scale = Math.min(1, max / Math.max(image.width, image.height)),
+        canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error());
+        return;
+      }
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", 0.78));
+    };
+    image.onerror = () => reject(new Error());
+    image.src = source;
+  });
+}
+function addFollowUpToAgenda(appointment: Appointment) {
+  try {
+    const data = JSON.parse(runtimeStore.getItem("asha-demo") || "null") || {},
+      appointments: Array<Appointment> = Array.isArray(data.appointments)
+        ? data.appointments
+        : [];
+    const duplicate = appointments.some(
+      (item) =>
+        item.date === appointment.date &&
+        item.time === appointment.time &&
+        item.patient === appointment.patient &&
+        item.service === appointment.service,
+    );
+    if (!duplicate)
+      runtimeStore.setItem(
+        "asha-demo",
+        JSON.stringify({
+          ...data,
+          appointments: [appointment, ...appointments],
+        }),
+      );
+  } catch {}
+}
 
-function EvolutionForm({patients,preselected,selectedPatient,beforePhoto,afterPhoto,setBeforePhoto,setAfterPhoto,submit,saved,saveError}:{patients:Patient[];preselected:string;selectedPatient?:Patient;beforePhoto:string;afterPhoto:string;setBeforePhoto:(v:string)=>void;setAfterPhoto:(v:string)=>void;submit:(e:FormEvent<HTMLFormElement>)=>void;saved:boolean;saveError:string}){const professional=readTreatingProfessional();return <form className="aesthetic-history-form" onSubmit={submit}><HistorySection title="Evolución clínica" text="Registra únicamente los cambios y datos relevantes de este control."><div className="history-grid history-grid-3"><HistoryField label="Paciente"><select name="patient" defaultValue={preselected}><option value="">Sin seleccionar</option>{patients.map(p=><option key={p.id} value={p.name}>{p.name}{p.code?` · ${p.code}`:""}</option>)}</select></HistoryField><HistoryField label="Fecha"><input name="consultationDate" type="date" defaultValue={todayBolivia()}/></HistoryField><HistoryField label="Profesional"><input name="professional" defaultValue={professional} readOnly/></HistoryField></div>{selectedPatient&&<p className="history-patient-note">{selectedPatient.code||"Sin código"}{selectedPatient.age?` · ${selectedPatient.age} años`:""}{selectedPatient.phone?` · ${selectedPatient.phone}`:""}</p>}<div className="history-grid"><HistoryField label="Procedimiento / tratamiento relacionado"><input name="procedure" placeholder="Opcional"/></HistoryField><HistoryField label="Zona(s) evaluada(s)"><input name="areas" placeholder="Opcional"/></HistoryField><HistoryField label="Evolución del paciente"><textarea name="evolution" rows={5} placeholder="Respuesta al tratamiento, cambios, síntomas, hallazgos, progreso…"/></HistoryField><HistoryField label="Eventos adversos / complicaciones"><textarea name="adverseEvents" rows={4}/></HistoryField><HistoryField label="Indicaciones / conducta"><textarea name="postCare" rows={4}/></HistoryField><HistoryField label="Observaciones"><textarea name="finalNotes" rows={4}/></HistoryField></div><div className="history-followup"><div className="history-followup-title"><CalendarDays/><div><b>Próximo control</b><small>Si registras fecha, también se añadirá a Agenda.</small></div></div><div className="history-grid history-grid-2"><HistoryField label="Fecha"><input name="nextControl" type="date"/></HistoryField><HistoryField label="Hora"><input name="nextControlTime" type="time"/></HistoryField></div></div><div className="history-photo-title"><div><ImagePlus/><span><b>Fotografías de evolución</b><small>Puedes elegir imágenes de la galería o tomarlas desde el dispositivo.</small></span></div></div><div className="history-photo-grid"><PhotoSlot label="Control 1" value={beforePhoto} onChange={setBeforePhoto}/><PhotoSlot label="Control 2" value={afterPhoto} onChange={setAfterPhoto}/></div></HistorySection><footer className="aesthetic-history-actions"><span>{saveError||(saved?"Evolución guardada correctamente":"La evolución se añadirá a la historia existente; no crea otra historia clínica.")}</span><button type="button" className="history-secondary" onClick={()=>document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape"}))}>Cancelar</button><button type="submit" className="history-primary"><Save/>Guardar evolución</button></footer></form>}
+export function AestheticHistoryCompat() {
+  const [mode, setMode] = useState<Mode>(null),
+    [patients, setPatients] = useState<Patient[]>([]),
+    [preselected, setPreselected] = useState(""),
+    [initial, setInitial] = useState<HistoryRecord | null>(null),
+    [saved, setSaved] = useState(false),
+    [saveError, setSaveError] = useState("");
+  const [beforePhoto, setBeforePhoto] = useState(""),
+    [afterPhoto, setAfterPhoto] = useState("");
+  const open = (nextMode: Exclude<Mode, null>, patient = "") => {
+    setPatients(readPatients());
+    setPreselected(patient);
+    const existing = patient ? findInitial(patient) : null;
+    setInitial(existing);
+    setBeforePhoto(
+      nextMode === "history" ? value(existing, "beforePhoto") : "",
+    );
+    setAfterPhoto(nextMode === "history" ? value(existing, "afterPhoto") : "");
+    setSaved(false);
+    setSaveError("");
+    setMode(nextMode);
+  };
+  useEffect(() => {
+    const onClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null,
+        button = target?.closest("button");
+      if (!button) return;
+      const label = (button.textContent || "").replace(/\s+/g, " ").trim();
+      if (label !== "Nueva historia" && label !== "Registrar evolución") return;
+      event.preventDefault();
+      event.stopPropagation();
+      const patient =
+        label === "Registrar evolución"
+          ? button
+              .closest("article")
+              ?.querySelector("h3")
+              ?.textContent?.trim() || ""
+          : "";
+      open(label === "Registrar evolución" ? "evolution" : "history", patient);
+    };
+    const onEdit = (event: Event) => {
+      const patient =
+        (event as CustomEvent<{ patient?: string }>).detail?.patient || "";
+      if (patient) open("history", patient);
+    };
+    const onEvolution = (event: Event) => {
+      const detail = (event as CustomEvent<{ patient?: string; mode?: string }>)
+        .detail;
+      if (detail?.patient && detail.mode === "evolution")
+        open("evolution", detail.patient);
+    };
+    document.addEventListener("click", onClick, true);
+    window.addEventListener(
+      "asha-edit-clinical-history",
+      onEdit as EventListener,
+    );
+    window.addEventListener(
+      "asha-open-aesthetic-history",
+      onEvolution as EventListener,
+    );
+    return () => {
+      document.removeEventListener("click", onClick, true);
+      window.removeEventListener(
+        "asha-edit-clinical-history",
+        onEdit as EventListener,
+      );
+      window.removeEventListener(
+        "asha-open-aesthetic-history",
+        onEvolution as EventListener,
+      );
+    };
+  }, []);
+  useEffect(() => {
+    if (!mode) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMode(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [mode]);
+  const selectedPatient = useMemo(
+    () => patients.find((p) => p.name === preselected),
+    [patients, preselected],
+  );
+  if (!mode) return null;
 
-function PhotoSlot({label,value,onChange}:{label:string;value:string;onChange:(value:string)=>void}){const galleryRef=useRef<HTMLInputElement>(null),cameraRef=useRef<HTMLInputElement>(null),[busy,setBusy]=useState(false),[error,setError]=useState("");const choose=async(event:ChangeEvent<HTMLInputElement>)=>{const file=event.target.files?.[0];event.target.value="";if(!file)return;setBusy(true);setError("");try{onChange(await preparePhoto(file))}catch{setError("No se pudo cargar la imagen.")}finally{setBusy(false)}};return <div className="history-photo-card"><div className="history-photo-card-head"><b>{label}</b>{value&&<button type="button" onClick={()=>onChange("")}><Trash2/>Quitar</button>}</div><div className={value?"history-photo-preview has-photo":"history-photo-preview"}>{value?<img src={value} alt={`Fotografía ${label.toLowerCase()}`}/>:<><ImagePlus/><span>Sin fotografía</span></>}</div><div className="history-photo-actions"><button type="button" onClick={()=>galleryRef.current?.click()} disabled={busy}><ImagePlus/>{busy?"Procesando…":"Elegir imagen"}</button><button type="button" onClick={()=>cameraRef.current?.click()} disabled={busy}><Camera/>Tomar foto</button></div>{error&&<small className="history-photo-error">{error}</small>}<input ref={galleryRef} hidden type="file" accept="image/*" onChange={choose}/><input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={choose}/></div>}
-function HistorySection({title,text,children}:{title:string;text:string;children:React.ReactNode}){return <fieldset className="history-section"><legend>{title}</legend><p>{text}</p>{children}</fieldset>}
-function HistoryField({label,children}:{label:string;children:React.ReactNode}){return <label className="history-field"><span>{label}</span>{children}</label>}
+  const submitHistory = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSaveError("");
+    const form = new FormData(event.currentTarget),
+      patient = text(form, "patient"),
+      patientInfo = patients.find((p) => p.name === patient);
+    if (!patient) {
+      setSaveError("Selecciona un paciente.");
+      return;
+    }
+    const checks = relevantHistory
+        .filter(([key]) => form.get(key) === "on")
+        .map(([, label]) => label),
+      rows = readHistories(),
+      existing = findInitial(patient);
+    const data: Record<string, string | string[]> = {
+      ...(existing?.data || {}),
+      recordType: "initial",
+      consultationDate: text(form, "consultationDate"),
+      professional: text(form, "professional"),
+      reason: text(form, "reason"),
+      expectations: text(form, "expectations"),
+      pathological: text(form, "pathological"),
+      surgical: text(form, "surgical"),
+      hospitalizations: text(form, "hospitalizations"),
+      medications: text(form, "medications"),
+      allergyDetail: text(form, "allergyDetail"),
+      gynecologic: text(form, "gynecologic"),
+      habits: text(form, "habits"),
+      sunExposure: text(form, "sunExposure"),
+      relevantHistory: checks,
+      otherRelevant: text(form, "otherRelevant"),
+      priorAesthetic: text(form, "priorAesthetic"),
+      priorBotulinum: text(form, "priorBotulinum"),
+      priorFillers: text(form, "priorFillers"),
+      priorBiostimulators: text(form, "priorBiostimulators"),
+      priorDevices: text(form, "priorDevices"),
+      priorComplications: text(form, "priorComplications"),
+      bloodPressure: text(form, "bloodPressure"),
+      heartRate: text(form, "heartRate"),
+      weight: text(form, "weight"),
+      height: text(form, "height"),
+      fitzpatrick: text(form, "fitzpatrick"),
+      glogau: text(form, "glogau"),
+      skinType: text(form, "skinType"),
+      skinFindings: text(form, "skinFindings"),
+      facialAnalysis: text(form, "facialAnalysis"),
+      bodyAnalysis: text(form, "bodyAnalysis"),
+      assessment: text(form, "assessment"),
+      diagnosis: text(form, "diagnosis"),
+      objectives: text(form, "objectives"),
+      treatmentPlan: text(form, "treatmentPlan"),
+      alternatives: text(form, "alternatives"),
+      informedConsent: text(form, "informedConsent"),
+      photoAuthorization: text(form, "photoAuthorization"),
+      finalNotes: text(form, "finalNotes"),
+      beforePhoto,
+      afterPhoto,
+    };
+    const record: HistoryRecord = existing
+      ? {
+          ...existing,
+          patientCode: patientInfo?.code || existing.patientCode,
+          data,
+        }
+      : {
+          id: Date.now(),
+          createdAt: new Date().toISOString(),
+          patient,
+          patientCode: patientInfo?.code || "",
+          data,
+        };
+    try {
+      writeHistories(
+        existing
+          ? rows.map((row) => (row.id === existing.id ? record : row))
+          : [record, ...rows],
+      );
+      setSaved(true);
+      window.dispatchEvent(
+        new CustomEvent("asha-clinical-completed", { detail: { patient } }),
+      );
+      setTimeout(() => setMode(null), 800);
+    } catch {
+      setSaveError("No se pudo guardar la historia clínica.");
+    }
+  };
+
+  const submitEvolution = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSaveError("");
+    const form = new FormData(event.currentTarget),
+      patient = text(form, "patient"),
+      patientInfo = patients.find((p) => p.name === patient),
+      nextControl = text(form, "nextControl"),
+      nextControlTime = text(form, "nextControlTime");
+    if (!patient) {
+      setSaveError("Selecciona un paciente.");
+      return;
+    }
+    const record: HistoryRecord = {
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      patient,
+      patientCode: patientInfo?.code || "",
+      data: {
+        recordType: "evolution",
+        consultationDate: text(form, "consultationDate"),
+        professional: text(form, "professional"),
+        procedure: text(form, "procedure"),
+        areas: text(form, "areas"),
+        evolution: text(form, "evolution"),
+        adverseEvents: text(form, "adverseEvents"),
+        postCare: text(form, "postCare"),
+        nextControl,
+        nextControlTime,
+        finalNotes: text(form, "finalNotes"),
+        beforePhoto,
+        afterPhoto,
+      },
+    };
+    try {
+      writeHistories([record, ...readHistories()]);
+      if (nextControl)
+        addFollowUpToAgenda({
+          id: Date.now() + 1,
+          date: nextControl,
+          time: nextControlTime || "—",
+          patient,
+          service: `Control · ${text(form, "procedure") || "Evolución"}`,
+          status: "Pendiente",
+        });
+      setSaved(true);
+      window.dispatchEvent(
+        new CustomEvent("asha-clinical-completed", { detail: { patient } }),
+      );
+      setTimeout(() => setMode(null), 800);
+    } catch {
+      setSaveError("No se pudo guardar la evolución.");
+    }
+  };
+
+  return (
+    <div
+      className="aesthetic-history-layer"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) setMode(null);
+      }}
+    >
+      <section
+        className="aesthetic-history-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="aesthetic-history-title"
+      >
+        <header className="aesthetic-history-header">
+          <div>
+            <span className="aesthetic-history-icon">
+              <FileHeart />
+            </span>
+            <div>
+              <h2 id="aesthetic-history-title">
+                {mode === "history"
+                  ? "Historia clínica de medicina estética"
+                  : "Registrar evolución"}
+              </h2>
+              <p>
+                {mode === "history"
+                  ? "Historia clínica única del paciente. Los cambios actualizan el mismo registro."
+                  : "Agrega únicamente la evolución y seguimiento de esta atención."}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            aria-label="Cerrar"
+            onClick={() => setMode(null)}
+          >
+            <X />
+          </button>
+        </header>
+        {mode === "history" ? (
+          <HistoryForm
+            patients={patients}
+            preselected={preselected}
+            selectedPatient={selectedPatient}
+            initial={initial}
+            beforePhoto={beforePhoto}
+            afterPhoto={afterPhoto}
+            setBeforePhoto={setBeforePhoto}
+            setAfterPhoto={setAfterPhoto}
+            submit={submitHistory}
+            saved={saved}
+            saveError={saveError}
+          />
+        ) : (
+          <EvolutionForm
+            patients={patients}
+            preselected={preselected}
+            selectedPatient={selectedPatient}
+            beforePhoto={beforePhoto}
+            afterPhoto={afterPhoto}
+            setBeforePhoto={setBeforePhoto}
+            setAfterPhoto={setAfterPhoto}
+            submit={submitEvolution}
+            saved={saved}
+            saveError={saveError}
+          />
+        )}
+      </section>
+    </div>
+  );
+}
+
+function HistoryForm({
+  patients,
+  preselected,
+  selectedPatient,
+  initial,
+  beforePhoto,
+  afterPhoto,
+  setBeforePhoto,
+  setAfterPhoto,
+  submit,
+  saved,
+  saveError,
+}: {
+  patients: Patient[];
+  preselected: string;
+  selectedPatient?: Patient;
+  initial: HistoryRecord | null;
+  beforePhoto: string;
+  afterPhoto: string;
+  setBeforePhoto: (v: string) => void;
+  setAfterPhoto: (v: string) => void;
+  submit: (e: FormEvent<HTMLFormElement>) => void;
+  saved: boolean;
+  saveError: string;
+}) {
+  const d = (key: string) => value(initial, key);
+  const checks = Array.isArray(initial?.data?.relevantHistory)
+    ? (initial?.data?.relevantHistory as string[])
+    : [];
+  const professional = d("professional") || readTreatingProfessional();
+  return (
+    <form className="aesthetic-history-form" onSubmit={submit}>
+      <HistorySection
+        title="1. Identificación y consulta"
+        text="Datos generales de la historia clínica inicial."
+      >
+        <div className="history-grid history-grid-3">
+          <HistoryField label="Paciente">
+            <select name="patient" defaultValue={preselected}>
+              <option value="">Sin seleccionar</option>
+              {patients.map((p) => (
+                <option key={p.id} value={p.name}>
+                  {p.name}
+                  {p.code ? ` · ${p.code}` : ""}
+                </option>
+              ))}
+            </select>
+          </HistoryField>
+          <HistoryField label="Fecha">
+            <input
+              name="consultationDate"
+              type="date"
+              defaultValue={d("consultationDate") || todayBolivia()}
+            />
+          </HistoryField>
+          <HistoryField label="Profesional tratante">
+            <input name="professional" defaultValue={professional} readOnly />
+          </HistoryField>
+        </div>
+        {selectedPatient && (
+          <p className="history-patient-note">
+            {selectedPatient.code || "Sin código"}
+            {selectedPatient.age ? ` · ${selectedPatient.age} años` : ""}
+            {selectedPatient.phone ? ` · ${selectedPatient.phone}` : ""}
+          </p>
+        )}
+        <div className="history-grid">
+          <HistoryField label="Motivo de consulta">
+            <textarea name="reason" rows={3} defaultValue={d("reason")} />
+          </HistoryField>
+          <HistoryField label="Expectativas y objetivos">
+            <textarea
+              name="expectations"
+              rows={3}
+              defaultValue={d("expectations")}
+            />
+          </HistoryField>
+        </div>
+      </HistorySection>
+      <HistorySection
+        title="2. Antecedentes médicos y factores de riesgo"
+        text="Antecedentes permanentes y alertas relevantes para procedimientos estéticos."
+      >
+        <div className="history-grid">
+          <HistoryField label="Antecedentes patológicos">
+            <textarea
+              name="pathological"
+              rows={3}
+              defaultValue={d("pathological")}
+            />
+          </HistoryField>
+          <HistoryField label="Antecedentes quirúrgicos">
+            <textarea name="surgical" rows={3} defaultValue={d("surgical")} />
+          </HistoryField>
+          <HistoryField label="Hospitalizaciones / procedimientos previos">
+            <textarea
+              name="hospitalizations"
+              rows={3}
+              defaultValue={d("hospitalizations")}
+            />
+          </HistoryField>
+          <HistoryField label="Medicamentos y suplementos">
+            <textarea
+              name="medications"
+              rows={3}
+              defaultValue={d("medications")}
+            />
+          </HistoryField>
+          <HistoryField label="Alergias: detalle">
+            <textarea
+              name="allergyDetail"
+              rows={3}
+              defaultValue={d("allergyDetail")}
+            />
+          </HistoryField>
+          <HistoryField label="Antecedentes gineco-obstétricos">
+            <textarea
+              name="gynecologic"
+              rows={3}
+              defaultValue={d("gynecologic")}
+            />
+          </HistoryField>
+          <HistoryField label="Hábitos">
+            <textarea name="habits" rows={3} defaultValue={d("habits")} />
+          </HistoryField>
+          <HistoryField label="Exposición solar / fotoprotección">
+            <textarea
+              name="sunExposure"
+              rows={3}
+              defaultValue={d("sunExposure")}
+            />
+          </HistoryField>
+        </div>
+        <div className="history-checks">
+          {relevantHistory.map(([key, label]) => (
+            <label key={key}>
+              <input
+                type="checkbox"
+                name={key}
+                defaultChecked={checks.includes(label)}
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
+        <HistoryField label="Otros antecedentes relevantes">
+          <textarea
+            name="otherRelevant"
+            rows={3}
+            defaultValue={d("otherRelevant")}
+          />
+        </HistoryField>
+      </HistorySection>
+      <HistorySection
+        title="3. Antecedentes estéticos"
+        text="Procedimientos previos y respuesta clínica."
+      >
+        <div className="history-grid">
+          <HistoryField label="Tratamientos estéticos previos">
+            <textarea
+              name="priorAesthetic"
+              rows={3}
+              defaultValue={d("priorAesthetic")}
+            />
+          </HistoryField>
+          <HistoryField label="Toxina botulínica">
+            <textarea
+              name="priorBotulinum"
+              rows={3}
+              defaultValue={d("priorBotulinum")}
+            />
+          </HistoryField>
+          <HistoryField label="Rellenos / ácido hialurónico">
+            <textarea
+              name="priorFillers"
+              rows={3}
+              defaultValue={d("priorFillers")}
+            />
+          </HistoryField>
+          <HistoryField label="Bioestimuladores / hilos">
+            <textarea
+              name="priorBiostimulators"
+              rows={3}
+              defaultValue={d("priorBiostimulators")}
+            />
+          </HistoryField>
+          <HistoryField label="Láser / IPL / RF / peelings">
+            <textarea
+              name="priorDevices"
+              rows={3}
+              defaultValue={d("priorDevices")}
+            />
+          </HistoryField>
+          <HistoryField label="Complicaciones previas">
+            <textarea
+              name="priorComplications"
+              rows={3}
+              defaultValue={d("priorComplications")}
+            />
+          </HistoryField>
+        </div>
+      </HistorySection>
+      <HistorySection
+        title="4. Evaluación clínica estética"
+        text="Evaluación basal que puede actualizarse cuando sea necesario."
+      >
+        <div className="history-grid history-grid-4">
+          <HistoryField label="Presión arterial">
+            <input name="bloodPressure" defaultValue={d("bloodPressure")} />
+          </HistoryField>
+          <HistoryField label="Frecuencia cardiaca">
+            <input name="heartRate" defaultValue={d("heartRate")} />
+          </HistoryField>
+          <HistoryField label="Peso">
+            <input name="weight" defaultValue={d("weight")} />
+          </HistoryField>
+          <HistoryField label="Talla">
+            <input name="height" defaultValue={d("height")} />
+          </HistoryField>
+        </div>
+        <div className="history-grid history-grid-3">
+          <HistoryField label="Fototipo Fitzpatrick">
+            <select name="fitzpatrick" defaultValue={d("fitzpatrick")}>
+              <option value="">No registrado</option>
+              {["I", "II", "III", "IV", "V", "VI"].map((v) => (
+                <option key={v}>{v}</option>
+              ))}
+            </select>
+          </HistoryField>
+          <HistoryField label="Clasificación de Glogau">
+            <select name="glogau" defaultValue={d("glogau")}>
+              <option value="">No registrado</option>
+              <option>I · Leve</option>
+              <option>II · Moderado</option>
+              <option>III · Avanzado</option>
+              <option>IV · Severo</option>
+            </select>
+          </HistoryField>
+          <HistoryField label="Tipo / condición de piel">
+            <input name="skinType" defaultValue={d("skinType")} />
+          </HistoryField>
+        </div>
+        <div className="history-grid">
+          <HistoryField label="Hallazgos cutáneos">
+            <textarea
+              name="skinFindings"
+              rows={4}
+              defaultValue={d("skinFindings")}
+            />
+          </HistoryField>
+          <HistoryField label="Análisis facial">
+            <textarea
+              name="facialAnalysis"
+              rows={4}
+              defaultValue={d("facialAnalysis")}
+            />
+          </HistoryField>
+          <HistoryField label="Análisis corporal">
+            <textarea
+              name="bodyAnalysis"
+              rows={4}
+              defaultValue={d("bodyAnalysis")}
+            />
+          </HistoryField>
+        </div>
+      </HistorySection>
+      <HistorySection
+        title="5. Impresión clínica y planificación"
+        text="Diagnóstico, objetivos y plan general del paciente."
+      >
+        <div className="history-grid">
+          <HistoryField label="Valoración estética integral">
+            <textarea
+              name="assessment"
+              rows={4}
+              defaultValue={d("assessment")}
+            />
+          </HistoryField>
+          <HistoryField label="Diagnóstico / impresión diagnóstica">
+            <textarea name="diagnosis" rows={4} defaultValue={d("diagnosis")} />
+          </HistoryField>
+          <HistoryField label="Objetivos terapéuticos">
+            <textarea
+              name="objectives"
+              rows={4}
+              defaultValue={d("objectives")}
+            />
+          </HistoryField>
+          <HistoryField label="Plan de tratamiento">
+            <textarea
+              name="treatmentPlan"
+              rows={4}
+              defaultValue={d("treatmentPlan")}
+            />
+          </HistoryField>
+          <HistoryField label="Alternativas explicadas">
+            <textarea
+              name="alternatives"
+              rows={3}
+              defaultValue={d("alternatives")}
+            />
+          </HistoryField>
+        </div>
+      </HistorySection>
+      <HistorySection
+        title="6. Documentación"
+        text="Consentimientos, observaciones y registro fotográfico basal."
+      >
+        <div className="history-grid history-grid-2">
+          <HistoryField label="Consentimiento informado">
+            <select name="informedConsent" defaultValue={d("informedConsent")}>
+              <option value="">No registrado</option>
+              <option>Firmado</option>
+              <option>Explicado / pendiente de firma</option>
+              <option>No aplica</option>
+            </select>
+          </HistoryField>
+          <HistoryField label="Autorización para fotografías">
+            <select
+              name="photoAuthorization"
+              defaultValue={d("photoAuthorization")}
+            >
+              <option value="">No registrado</option>
+              <option>Autorizada para historia clínica</option>
+              <option>Autorizada para uso científico / educativo</option>
+              <option>No autorizada</option>
+            </select>
+          </HistoryField>
+        </div>
+        <HistoryField label="Observaciones finales">
+          <textarea name="finalNotes" rows={4} defaultValue={d("finalNotes")} />
+        </HistoryField>
+        <div className="history-photo-grid">
+          <PhotoSlot
+            label="Foto basal 1"
+            value={beforePhoto}
+            onChange={setBeforePhoto}
+          />
+          <PhotoSlot
+            label="Foto basal 2"
+            value={afterPhoto}
+            onChange={setAfterPhoto}
+          />
+        </div>
+      </HistorySection>
+      <footer className="aesthetic-history-actions">
+        <span>
+          {saveError ||
+            (saved
+              ? "Historia clínica actualizada correctamente"
+              : "Existe una sola historia clínica por paciente.")}
+        </span>
+        <button
+          type="button"
+          className="history-secondary"
+          onClick={() =>
+            document.dispatchEvent(
+              new KeyboardEvent("keydown", { key: "Escape" }),
+            )
+          }
+        >
+          Cancelar
+        </button>
+        <button type="submit" className="history-primary">
+          <Save />
+          {initial ? "Guardar cambios" : "Crear historia clínica"}
+        </button>
+      </footer>
+    </form>
+  );
+}
+
+function EvolutionForm({
+  patients,
+  preselected,
+  selectedPatient,
+  beforePhoto,
+  afterPhoto,
+  setBeforePhoto,
+  setAfterPhoto,
+  submit,
+  saved,
+  saveError,
+}: {
+  patients: Patient[];
+  preselected: string;
+  selectedPatient?: Patient;
+  beforePhoto: string;
+  afterPhoto: string;
+  setBeforePhoto: (v: string) => void;
+  setAfterPhoto: (v: string) => void;
+  submit: (e: FormEvent<HTMLFormElement>) => void;
+  saved: boolean;
+  saveError: string;
+}) {
+  const professional = readTreatingProfessional();
+  return (
+    <form className="aesthetic-history-form" onSubmit={submit}>
+      <HistorySection
+        title="Evolución clínica"
+        text="Registra únicamente los cambios y datos relevantes de este control."
+      >
+        <div className="history-grid history-grid-3">
+          <HistoryField label="Paciente">
+            <select name="patient" defaultValue={preselected}>
+              <option value="">Sin seleccionar</option>
+              {patients.map((p) => (
+                <option key={p.id} value={p.name}>
+                  {p.name}
+                  {p.code ? ` · ${p.code}` : ""}
+                </option>
+              ))}
+            </select>
+          </HistoryField>
+          <HistoryField label="Fecha">
+            <input
+              name="consultationDate"
+              type="date"
+              defaultValue={todayBolivia()}
+            />
+          </HistoryField>
+          <HistoryField label="Profesional">
+            <input name="professional" defaultValue={professional} readOnly />
+          </HistoryField>
+        </div>
+        {selectedPatient && (
+          <p className="history-patient-note">
+            {selectedPatient.code || "Sin código"}
+            {selectedPatient.age ? ` · ${selectedPatient.age} años` : ""}
+            {selectedPatient.phone ? ` · ${selectedPatient.phone}` : ""}
+          </p>
+        )}
+        <div className="history-grid">
+          <HistoryField label="Procedimiento / tratamiento relacionado">
+            <input name="procedure" placeholder="Opcional" />
+          </HistoryField>
+          <HistoryField label="Zona(s) evaluada(s)">
+            <input name="areas" placeholder="Opcional" />
+          </HistoryField>
+          <HistoryField label="Evolución del paciente">
+            <textarea
+              name="evolution"
+              rows={5}
+              placeholder="Respuesta al tratamiento, cambios, síntomas, hallazgos, progreso…"
+            />
+          </HistoryField>
+          <HistoryField label="Eventos adversos / complicaciones">
+            <textarea name="adverseEvents" rows={4} />
+          </HistoryField>
+          <HistoryField label="Indicaciones / conducta">
+            <textarea name="postCare" rows={4} />
+          </HistoryField>
+          <HistoryField label="Observaciones">
+            <textarea name="finalNotes" rows={4} />
+          </HistoryField>
+        </div>
+        <div className="history-followup">
+          <div className="history-followup-title">
+            <CalendarDays />
+            <div>
+              <b>Próximo control</b>
+              <small>Si registras fecha, también se añadirá a Agenda.</small>
+            </div>
+          </div>
+          <div className="history-grid history-grid-2">
+            <HistoryField label="Fecha">
+              <input name="nextControl" type="date" />
+            </HistoryField>
+            <HistoryField label="Hora">
+              <input name="nextControlTime" type="time" />
+            </HistoryField>
+          </div>
+        </div>
+        <div className="history-photo-title">
+          <div>
+            <ImagePlus />
+            <span>
+              <b>Fotografías de evolución</b>
+              <small>
+                Puedes elegir imágenes de la galería o tomarlas desde el
+                dispositivo.
+              </small>
+            </span>
+          </div>
+        </div>
+        <div className="history-photo-grid">
+          <PhotoSlot
+            label="Control 1"
+            value={beforePhoto}
+            onChange={setBeforePhoto}
+          />
+          <PhotoSlot
+            label="Control 2"
+            value={afterPhoto}
+            onChange={setAfterPhoto}
+          />
+        </div>
+      </HistorySection>
+      <footer className="aesthetic-history-actions">
+        <span>
+          {saveError ||
+            (saved
+              ? "Evolución guardada correctamente"
+              : "La evolución se añadirá a la historia existente; no crea otra historia clínica.")}
+        </span>
+        <button
+          type="button"
+          className="history-secondary"
+          onClick={() =>
+            document.dispatchEvent(
+              new KeyboardEvent("keydown", { key: "Escape" }),
+            )
+          }
+        >
+          Cancelar
+        </button>
+        <button type="submit" className="history-primary">
+          <Save />
+          Guardar evolución
+        </button>
+      </footer>
+    </form>
+  );
+}
+
+function PhotoSlot({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const galleryRef = useRef<HTMLInputElement>(null),
+    cameraRef = useRef<HTMLInputElement>(null),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  const choose = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    setError("");
+    try {
+      onChange(await preparePhoto(file));
+    } catch {
+      setError("No se pudo cargar la imagen.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="history-photo-card">
+      <div className="history-photo-card-head">
+        <b>{label}</b>
+        {value && (
+          <button type="button" onClick={() => onChange("")}>
+            <Trash2 />
+            Quitar
+          </button>
+        )}
+      </div>
+      <div
+        className={
+          value ? "history-photo-preview has-photo" : "history-photo-preview"
+        }
+      >
+        {value ? (
+          <img src={value} alt={`Fotografía ${label.toLowerCase()}`} />
+        ) : (
+          <>
+            <ImagePlus />
+            <span>Sin fotografía</span>
+          </>
+        )}
+      </div>
+      <div className="history-photo-actions">
+        <button
+          type="button"
+          onClick={() => galleryRef.current?.click()}
+          disabled={busy}
+        >
+          <ImagePlus />
+          {busy ? "Procesando…" : "Elegir imagen"}
+        </button>
+        <button
+          type="button"
+          onClick={() => cameraRef.current?.click()}
+          disabled={busy}
+        >
+          <Camera />
+          Tomar foto
+        </button>
+      </div>
+      {error && <small className="history-photo-error">{error}</small>}
+      <input
+        ref={galleryRef}
+        hidden
+        type="file"
+        accept="image/*"
+        onChange={choose}
+      />
+      <input
+        ref={cameraRef}
+        hidden
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={choose}
+      />
+    </div>
+  );
+}
+function HistorySection({
+  title,
+  text,
+  children,
+}: {
+  title: string;
+  text: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <fieldset className="history-section">
+      <legend>{title}</legend>
+      <p>{text}</p>
+      {children}
+    </fieldset>
+  );
+}
+function HistoryField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="history-field">
+      <span>{label}</span>
+      {children}
+    </label>
+  );
+}
