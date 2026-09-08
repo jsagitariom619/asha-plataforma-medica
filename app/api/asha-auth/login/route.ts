@@ -8,6 +8,7 @@ import {
 } from "@/lib/supabase/server-rest";
 import { setSessionCookies } from "@/lib/auth/session";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function fail(message: string, status = 400) {
@@ -77,8 +78,9 @@ export async function POST(request: Request) {
       `/auth/v1/admin/users/${encodeURIComponent(profile.id)}`,
       { headers: { Accept: "application/json" } },
     );
-    if (!authUserResponse.ok)
+    if (!authUserResponse.ok) {
       return fail("Usuario o PIN/contraseña incorrectos.", 401);
+    }
 
     const authPayload = await readJsonSafe(authUserResponse);
     const authUser = unwrapAuthUser(authPayload);
@@ -89,6 +91,21 @@ export async function POST(request: Request) {
         : {};
     const isInternalUser = metadata.asha_internal_user === true;
     if (!email) return fail("Usuario o PIN/contraseña incorrectos.", 401);
+
+    let permissions: string[] = [];
+    const permissionResponse = await supabaseAdminFetch(
+      `/rest/v1/user_permissions?select=module,allowed&user_id=eq.${encodeURIComponent(profile.id)}&allowed=eq.true`,
+      { headers: { Accept: "application/json" } },
+    );
+    if (permissionResponse.ok) {
+      const rows = (await permissionResponse.json()) as Array<{
+        module?: string;
+        allowed?: boolean;
+      }>;
+      permissions = rows
+        .filter((row) => row.allowed === true && typeof row.module === "string")
+        .map((row) => String(row.module));
+    }
 
     const password = isInternalUser
       ? deriveInternalPassword(username, providedSecret)
@@ -115,22 +132,16 @@ export async function POST(request: Request) {
       return fail("Usuario o PIN/contraseña incorrectos.", 401);
     }
 
-    let permissions: string[] = [];
-    const permissionResponse = await supabaseAdminFetch(
-      `/rest/v1/user_permissions?select=module,allowed&user_id=eq.${encodeURIComponent(profile.id)}&allowed=eq.true`,
-      { headers: { Accept: "application/json" } },
-    );
-    if (permissionResponse.ok) {
-      const rows = (await permissionResponse.json()) as Array<{
-        module?: string;
-        allowed?: boolean;
-      }>;
-      permissions = rows
-        .filter((row) => row.allowed === true && typeof row.module === "string")
-        .map((row) => String(row.module));
+    const session = await readJsonSafe(tokenResponse);
+    const accessToken =
+      typeof session.access_token === "string" ? session.access_token : "";
+    const refreshToken =
+      typeof session.refresh_token === "string" ? session.refresh_token : "";
+    if (!accessToken || !refreshToken) {
+      console.error("ASHA login session missing tokens", { username });
+      return fail("No se pudo establecer la sesión segura.", 503);
     }
 
-    const session = await readJsonSafe(tokenResponse);
     const output = NextResponse.json(
       {
         ok: true,
@@ -148,9 +159,10 @@ export async function POST(request: Request) {
       },
       { headers: { "Cache-Control": "no-store" } },
     );
+
     setSessionCookies(output, {
-      access_token: String(session.access_token || ""),
-      refresh_token: String(session.refresh_token || ""),
+      access_token: accessToken,
+      refresh_token: refreshToken,
       expires_in: Number(session.expires_in) || 3600,
     });
     return output;
