@@ -294,13 +294,12 @@ const boliviaHour = () =>
     }).format(new Date()),
   );
 const mergeCloudUser = (source: User[], cloudUser: CloudUser) => {
-  const matchIndex = cloudUser.isPrimaryAdmin
-    ? 0
-    : source.findIndex(
-        (user) =>
-          normalizeUsername(user.username || "") ===
-          normalizeUsername(cloudUser.username),
-      );
+  const matchIndex = source.findIndex(
+    (user) =>
+      user.cloudId === cloudUser.id ||
+      normalizeUsername(user.username || "") ===
+        normalizeUsername(cloudUser.username),
+  );
   const nextId = Math.max(0, ...source.map((user) => user.id)) + 1;
   const base =
     matchIndex >= 0
@@ -390,6 +389,9 @@ export default function Home() {
         setUsers(merged.users);
         setCurrentUserId(merged.userId);
         setProfessionalName(cloudUser.fullName);
+        setHydrated(true);
+        setAuthReady(true);
+        setBootstrapState("configured");
         const stateResponse=await fetch("/api/clinic-state",{credentials:"same-origin",cache:"no-store",headers:{Accept:"application/json"}});
         const stateData=await stateResponse.json().catch(()=>({}));
         if(cancelled)return;
@@ -901,11 +903,17 @@ export default function Home() {
       const response=await fetch("/api/asha-auth/login",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:clean,pin:password})});
       const data=await response.json().catch(()=>({}));
       if(!response.ok||data?.ok!==true||!data.user)return typeof data?.error==="string"?data.error:"No se pudo iniciar sesión.";
-      const cloudUser=data.user as CloudUser,merged=mergeCloudUser([],cloudUser);setUsers(merged.users);setCurrentUserId(merged.userId);setProfessionalName(cloudUser.fullName);
-      const stateResponse=await fetch("/api/clinic-state",{credentials:"same-origin",cache:"no-store"}),stateData=await stateResponse.json().catch(()=>({}));
-      if(!stateResponse.ok||stateData?.ok!==true)return typeof stateData?.error==="string"?stateData.error:"No se pudo cargar la información.";
-      const state=stateData.state&&typeof stateData.state==="object"?stateData.state as Record<string,unknown>:{};
-      setPatients(Array.isArray(state.patients)?state.patients as Patient[]:[]);setServices(Array.isArray(state.services)?state.services as Service[]:[]);setProducts(Array.isArray(state.products)?state.products as Product[]:[]);setTxs(Array.isArray(state.txs)?state.txs as Tx[]:[]);setAppointments(Array.isArray(state.appointments)?state.appointments as Appointment[]:[]);setAttentions(Array.isArray(state.attentions)?state.attentions as Attention[]:[]);primeRuntimeState(state);setCloudReady(true);setBootstrapState("configured");return "";
+      const cloudUser=data.user as CloudUser,merged=mergeCloudUser([],cloudUser);
+      setUsers(merged.users);setCurrentUserId(merged.userId);setProfessionalName(cloudUser.fullName);setHydrated(true);setBootstrapState("configured");setCloudReady(false);
+      void (async()=>{
+        try{
+          const stateResponse=await fetch("/api/clinic-state",{credentials:"same-origin",cache:"no-store"}),stateData=await stateResponse.json().catch(()=>({}));
+          if(!stateResponse.ok||stateData?.ok!==true)throw new Error(typeof stateData?.error==="string"?stateData.error:"No se pudo cargar la información de Supabase.");
+          const state=stateData.state&&typeof stateData.state==="object"?stateData.state as Record<string,unknown>:{};
+          setPatients(Array.isArray(state.patients)?state.patients as Patient[]:[]);setServices(Array.isArray(state.services)?state.services as Service[]:[]);setProducts(Array.isArray(state.products)?state.products as Product[]:[]);setTxs(Array.isArray(state.txs)?state.txs as Tx[]:[]);setAppointments(Array.isArray(state.appointments)?state.appointments as Appointment[]:[]);setAttentions(Array.isArray(state.attentions)?state.attentions as Attention[]:[]);if(typeof state.professionalName==="string"&&state.professionalName.trim())setProfessionalName(state.professionalName);primeRuntimeState(state);setCloudReady(true);
+        }catch(error){setFlash(error instanceof Error?error.message:"No se pudo cargar la información de Supabase.")}
+      })();
+      return "";
     }catch{return "No se pudo conectar con el servicio de autenticación. Intenta nuevamente."}
   };
 
