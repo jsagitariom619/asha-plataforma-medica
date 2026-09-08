@@ -2727,7 +2727,7 @@ function Entry({
   };
   return (
     <Dialog open={!!type} onOpenChange={(o) => !o && !busy && close()}>
-      <DialogContent>
+      <DialogContent className={type === "user" ? "user-entry-dialog" : undefined}>
         <DialogHeader>
           <DialogTitle>{type ? names[type] : "Nuevo registro"}</DialogTitle>
           <DialogDescription>
