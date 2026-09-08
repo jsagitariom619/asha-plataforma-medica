@@ -3,6 +3,8 @@ import { getSupabasePublicConfig } from "@/lib/supabase/env";
 
 export type JsonRecord = Record<string, unknown>;
 
+const SUPABASE_REQUEST_TIMEOUT_MS = 8000;
+
 function getSupabaseSecretKey(): string {
   const value = process.env.SUPABASE_SECRET_KEY?.trim();
   if (!value) throw new Error("Missing SUPABASE_SECRET_KEY");
@@ -26,13 +28,22 @@ export function getSupabaseServerConfig() {
   return { url, publishableKey, secretKey };
 }
 
+function requestSignal(init: RequestInit): AbortSignal {
+  return init.signal ?? AbortSignal.timeout(SUPABASE_REQUEST_TIMEOUT_MS);
+}
+
 export async function supabaseAdminFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const { url, secretKey } = getSupabaseServerConfig();
   const headers = new Headers(init.headers);
   headers.set("apikey", secretKey);
   headers.set("Authorization", `Bearer ${secretKey}`);
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  return fetch(`${url}${path}`, { ...init, headers, cache: "no-store" });
+  return fetch(`${url}${path}`, {
+    ...init,
+    headers,
+    signal: requestSignal(init),
+    cache: "no-store",
+  });
 }
 
 export async function supabaseAuthFetch(path: string, init: RequestInit = {}): Promise<Response> {
@@ -40,7 +51,12 @@ export async function supabaseAuthFetch(path: string, init: RequestInit = {}): P
   const headers = new Headers(init.headers);
   headers.set("apikey", publishableKey);
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  return fetch(`${url}${path}`, { ...init, headers, cache: "no-store" });
+  return fetch(`${url}${path}`, {
+    ...init,
+    headers,
+    signal: requestSignal(init),
+    cache: "no-store",
+  });
 }
 
 export async function readJsonSafe(response: Response): Promise<JsonRecord> {
