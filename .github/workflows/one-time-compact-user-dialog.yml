@@ -1,0 +1,28 @@
+name: Compact ASHA user dialog
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-time-compact-user-dialog.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Apply compact user dialog patch
+        run: python scripts/compact-user-dialog.py
+      - name: Commit UI fix
+        run: |
+          git config user.name "ASHA maintenance"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/page.tsx app/globals.css
+          git commit -m "Compact user creation dialog" || exit 0
+          git push origin main
