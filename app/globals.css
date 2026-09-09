@@ -127,3 +127,16 @@
   .user-entry-dialog .permission-item{font-size:10px!important;padding:3px!important}
   .user-entry-dialog .form-actions{bottom:-14px;margin:3px -14px -14px!important;padding:9px 14px 10px!important}
 }
+
+
+/* ASHA horizontal user editor — scoped */
+.user-dialog{width:min(920px,calc(100vw - 32px))!important;max-width:920px!important;max-height:min(760px,calc(100vh - 32px));overflow:auto}
+.user-dialog .form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px;align-items:end}
+.user-dialog .user-photo-editor{grid-column:1/-1;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:#fff}
+.user-dialog .user-photo-copy{display:flex;flex-direction:column;gap:2px;min-width:0}
+.user-dialog .user-photo-copy small{font-size:10px;color:#7d8581}
+.user-dialog .user-photo-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.user-dialog .cols{display:contents}
+.user-dialog .form-note,.user-dialog .auth-error,.user-dialog .form-actions{grid-column:1/-1}
+.user-dialog .form-actions{margin-top:2px}
+@media(max-width:700px){.user-dialog{width:calc(100vw - 20px)!important;max-height:calc(100vh - 20px);padding:16px!important}.user-dialog .form{grid-template-columns:1fr;gap:10px}.user-dialog .user-photo-editor,.user-dialog .form-note,.user-dialog .auth-error,.user-dialog .form-actions{grid-column:1}.user-dialog .user-photo-editor{grid-template-columns:auto 1fr}.user-dialog .user-photo-actions{grid-column:1/-1;justify-content:flex-start}.user-dialog .cols{display:contents}}
