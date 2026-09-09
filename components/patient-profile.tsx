@@ -194,7 +194,10 @@ export function PatientProfileCompat() {
   useEffect(() => {
     if (!patient) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setPatient(null);
+      if (event.key !== "Escape") return;
+      // A clinical editor is a child of the expediente. Escape closes the child first.
+      if (document.querySelector(".aesthetic-history-layer")) return;
+      setPatient(null);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -304,8 +307,9 @@ export function PatientProfileCompat() {
   const initial =
     aestheticRecords.find((item) => item.type === "initial") || null;
   const dispatch = (name: string, detail: Record<string, string>) => {
+    // Keep the patient expediente mounted while a clinical child dialog is open.
+    // Closing/cancelling the child returns to this same expediente.
     window.dispatchEvent(new CustomEvent(name, { detail }));
-    setPatient(null);
   };
   const openEvolution = () =>
     dispatch("asha-open-aesthetic-history", {

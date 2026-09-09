@@ -234,6 +234,11 @@ export function AestheticHistoryCompat() {
       "asha-open-aesthetic-history",
       onEvolution as EventListener,
     );
+    const onClose = () => setMode(null);
+    window.addEventListener(
+      "asha-close-aesthetic-history",
+      onClose as EventListener,
+    );
     return () => {
       document.removeEventListener("click", onClick, true);
       window.removeEventListener(
@@ -243,6 +248,10 @@ export function AestheticHistoryCompat() {
       window.removeEventListener(
         "asha-open-aesthetic-history",
         onEvolution as EventListener,
+      );
+      window.removeEventListener(
+        "asha-close-aesthetic-history",
+        onClose as EventListener,
       );
     };
   }, []);
@@ -831,9 +840,7 @@ function HistoryForm({
           type="button"
           className="history-secondary"
           onClick={() =>
-            document.dispatchEvent(
-              new KeyboardEvent("keydown", { key: "Escape" }),
-            )
+            window.dispatchEvent(new CustomEvent("asha-close-aesthetic-history"))
           }
         >
           Cancelar
@@ -984,9 +991,7 @@ function EvolutionForm({
           type="button"
           className="history-secondary"
           onClick={() =>
-            document.dispatchEvent(
-              new KeyboardEvent("keydown", { key: "Escape" }),
-            )
+            window.dispatchEvent(new CustomEvent("asha-close-aesthetic-history"))
           }
         >
           Cancelar
