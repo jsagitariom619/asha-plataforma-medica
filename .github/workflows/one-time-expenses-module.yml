@@ -1,0 +1,34 @@
+name: Replace Pagos with Egresos
+on:
+  push:
+    paths:
+      - '.github/workflows/one-time-expenses-module.yml'
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Apply scoped correction
+        run: python scripts/replace-payments-with-expenses.py
+      - name: Install dependencies
+        run: npm install
+      - name: Build and regression tests
+        run: |
+          npm run build
+          npm test
+      - name: Commit functional files only
+        run: |
+          git config user.name "ASHA maintenance"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/page.tsx app/products.tsx
+          if git diff --cached --quiet; then
+            echo "No functional changes to commit"
+          else
+            git commit -m "fix(finance): replace Pagos with Egresos"
+            git push origin main
+          fi
