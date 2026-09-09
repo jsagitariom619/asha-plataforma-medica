@@ -1,0 +1,32 @@
+name: Apply ASHA product-only profit accounting
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-time-accounting-products-profit-only.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply accounting correction
+        run: python scripts/accounting-products-profit-only.py
+      - name: Install dependencies
+        run: npm install
+      - name: Build
+        run: npm run build
+      - name: Commit accounting correction
+        run: |
+          git config user.name "ASHA maintenance"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/accounting.tsx
+          git commit -m "fix(accounting): calculate profit only for product sales" || exit 0
+          git push origin main
