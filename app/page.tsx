@@ -1337,7 +1337,7 @@ function nowLabelFromIso(value: string) {
       }).format(parsed);
 }
 function storedProfessionalName(users: User[]) {
-  return users[0]?.name || "Dra. Andrea Vargas";
+  return users[0]?.name || "Profesional ASHA";
 }
 function UserAvatar({
   user,
