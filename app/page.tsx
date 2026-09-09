@@ -2884,14 +2884,14 @@ function Entry({
                     checked={manualAppointment}
                     onChange={(event) => setManualAppointment(event.target.checked)}
                   />
-                  Registrar paciente manualmente para esta cita
+                  Paciente nuevo / no registrado (primera vez)
                 </label>
               )}
               {appointmentManualAllowed && manualAppointment ? (
                 <Field label="Paciente (registro manual)">
                   <Input
                     name="manualPatient"
-                    placeholder="Nombre completo"
+                    placeholder="Nombre completo del paciente nuevo"
                     required
                     autoFocus
                   />
