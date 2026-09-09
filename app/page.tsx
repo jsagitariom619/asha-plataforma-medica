@@ -52,7 +52,7 @@ import {
   ProductsPanel,
 } from "@/app/products";
 import { AccountingPanel } from "@/app/accounting";
-import { PatientBillingPanel } from "@/app/patient-billing";
+import { PatientBillingPanel, PaymentsPanel } from "@/app/patient-billing";
 import { primeRuntimeState } from "@/lib/client/runtime-store";
 
 export type Patient = {
@@ -1231,8 +1231,8 @@ export default function Home() {
           )}
           {section === "Pagos" && (
             <>
-              <SectionLead text="Pagos de pacientes, saldos y abonos registrados" />
-              <PatientBillingPanel
+              <SectionLead text="Registro de pagos recibidos y abonos de pacientes" />
+              <PaymentsPanel
                 patients={patients}
                 attentions={attentions}
                 txs={txs}
