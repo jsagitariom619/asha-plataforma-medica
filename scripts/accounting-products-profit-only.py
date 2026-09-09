@@ -20,7 +20,7 @@ new = '''  const purchaseExpenses=sum(expenseRows.filter(tx=>tx.origin==="produc
   const cogs=costOfGoodsSold(incomeRows,products,txs);
   const cashFlow=income-expenses;
 
-  const priorRows=dated.filter(item=>inRange(item.date,previous.start,previous.end)).map(item=>item.tx).filter(validTx),priorIncomeRows=priorRows.filter(paidIncome),priorProductRows=priorIncomeRows.filter(tx=>tx.origin==="product-sale"),priorProductRevenue=sum(priorProductRows),priorCogs=costOfGoodsSold(priorProductRows,products,txs),priorProductProfit=priorProductRevenue-priorCogs;
+  const priorRows=dated.filter(item=>inRange(item.date,previous.start,previous.end)).map(item=>item.tx).filter(validTx),priorIncomeRows=priorRows.filter(paidIncome),priorIncome=sum(priorIncomeRows),priorProductRows=priorIncomeRows.filter(tx=>tx.origin==="product-sale"),priorProductRevenue=sum(priorProductRows),priorCogs=costOfGoodsSold(priorProductRows,products,txs),priorProductProfit=priorProductRevenue-priorCogs;
   const unknownDates=dated.filter(item=>item.date===null).length;
 
   const sales=incomeRows.filter(tx=>tx.origin==="product-sale"),unitsSold=sales.reduce((total,tx)=>total+(Number(tx.quantity)||Math.abs(Number(tx.stockDelta))||0),0),productRevenue=sum(sales),productProfit=productRevenue-cogs,productMargin=productRevenue>0?productProfit/productRevenue*100:0,serviceAndOtherIncome=Math.max(0,income-productRevenue);'''
