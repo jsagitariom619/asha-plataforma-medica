@@ -4,6 +4,7 @@ page = Path('app/page.tsx')
 s = page.read_text()
 s = s.replace('useState("Dra. Andrea Vargas")','useState("Profesional ASHA")',1)
 s = s.replace('[dateLabel, setDateLabel] = useState("Viernes, 4 de septiembre")','[dateLabel, setDateLabel] = useState(todayLabel())',1)
+s = s.replace('return users[0]?.name || "Dra. Andrea Vargas";','return users[0]?.name || "Profesional ASHA";',1)
 page.write_text(s)
 
 layout = Path('app/layout.tsx')
