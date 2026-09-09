@@ -48,12 +48,13 @@ import {
 } from "@/components/ui/dialog";
 import {
   CashPanel,
+  ExpensesPanel,
   MovementsPanel,
   ProductDialog,
   ProductsPanel,
 } from "@/app/products";
 import { AccountingPanel } from "@/app/accounting";
-import { PatientBillingPanel, PaymentsPanel } from "@/app/patient-billing";
+import { PatientBillingPanel } from "@/app/patient-billing";
 import { primeRuntimeState } from "@/lib/client/runtime-store";
 
 export type Patient = {
@@ -186,7 +187,7 @@ const MODULES = [
   "Agenda",
   "Servicios",
   "Productos",
-  "Pagos",
+  "Egresos",
   "Caja y cobros",
   "Movimientos",
   "Contabilidad",
@@ -201,7 +202,7 @@ const defaultPermissions = (role: string) => {
   if (role.includes("Admin")) return [...NON_ACCOUNTING_MODULES];
   // Secondary users work operationally without managing master/configuration data.
   // Clinical history remains role-specific; Productos is available to sell.
-  const operational = ["Resumen", "Pacientes", "Agenda", "Servicios", "Productos", "Pagos", "Caja y cobros"];
+  const operational = ["Resumen", "Pacientes", "Agenda", "Servicios", "Productos", "Egresos", "Caja y cobros"];
   if (role.includes("Médico")) return [...operational, "Historias clínicas"];
   return operational;
 };
@@ -251,7 +252,7 @@ const nav = [
   ["Agenda", CalendarDays],
   ["Servicios", Stethoscope],
   ["Productos", PackageOpen],
-  ["Pagos", Banknote],
+  ["Egresos", ArrowDownRight],
   ["Caja y cobros", WalletCards],
   ["Movimientos", CircleDollarSign],
   ["Contabilidad", Banknote],
@@ -480,7 +481,7 @@ export default function Home() {
     !!currentUser &&
     (isPrimary ||
       (currentUser.permissions ?? []).includes(module) ||
-      (module === "Pagos" && (currentUser.permissions ?? []).includes("Caja y cobros")));
+      (module === "Egresos" && ((currentUser.permissions ?? []).includes("Caja y cobros") || (currentUser.permissions ?? []).includes("Pagos"))));
   const visibleNav = nav.filter(([label]) => canAccess(label));
   useEffect(() => {
     if (!isPrimary || cloudUsersLoaded.current) return;
@@ -1239,14 +1240,15 @@ export default function Home() {
               />
             </>
           )}
-          {section === "Pagos" && (
+          {section === "Egresos" && (
             <>
-              <SectionLead text="Registro de pagos recibidos y abonos de pacientes" />
-              <PaymentsPanel
-                patients={patients}
-                attentions={attentions}
+              <SectionLead text="Salidas de dinero, gastos y compras registradas" />
+              <ExpensesPanel
                 txs={txs}
-                onPayment={registerPatientPayment}
+                onAdd={(expense) => {
+                  setTxs((current) => [expense, ...current]);
+                  notify("Egreso registrado correctamente");
+                }}
               />
             </>
           )}
