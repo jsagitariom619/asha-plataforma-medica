@@ -17,6 +17,11 @@ const manrope = Manrope({ subsets: ["latin"], variable: "--font-body" });
 export const metadata: Metadata = {
   title: "ASHA | Gestión Médica",
   description: "Gestión clínica y financiera de ASHA Integrative Medicine",
+  icons: {
+    icon: "/favicon.svg",
+    shortcut: "/favicon.svg",
+    apple: "/favicon.svg",
+  },
 };
 export default function RootLayout({
   children,
