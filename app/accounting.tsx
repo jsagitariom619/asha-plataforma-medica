@@ -59,6 +59,13 @@ function saleUnitCost(sale:Tx,products:Product[],txs:Tx[]){
   return Number(products.find(product=>product.id===sale.productId)?.purchaseCost)||0;
 }
 
+function costOfGoodsSold(rows:Tx[],products:Product[],txs:Tx[]){
+  return rows.filter(tx=>paidIncome(tx)&&tx.origin==="product-sale").reduce((total,tx)=>{
+    const units=Number(tx.quantity)||Math.abs(Number(tx.stockDelta))||0;
+    return total+saleUnitCost(tx,products,txs)*units;
+  },0);
+}
+
 const controls:CSSProperties={display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"};
 const button:CSSProperties={border:"1px solid #d9dfdc",background:"#fff",color:"#36504a",borderRadius:8,padding:"6px 9px",fontSize:11,fontWeight:700,cursor:"pointer",height:32};
 const activeButton:CSSProperties={...button,background:"#f7f2e6",borderColor:"#b59a5a",color:"#234a43"};
@@ -73,19 +80,27 @@ export function AccountingPanel({txs,products,services}:{txs:Tx[];products:Produ
   const period=buildPeriod(kind,from,to,month,year),previous=previousPeriod(period);
   const dated=txs.map(tx=>({tx,date:txDate(tx)}));
   const rows=dated.filter(item=>inRange(item.date,period.start,period.end)).map(item=>item.tx),valid=rows.filter(validTx),incomeRows=valid.filter(paidIncome),expenseRows=valid.filter(tx=>tx.type==="Egreso"),pendingRows=valid.filter(tx=>tx.type==="Ingreso"&&tx.status==="Pendiente"),registeredRows=valid.filter(tx=>tx.type==="Ingreso");
-  const income=sum(incomeRows),expenses=sum(expenseRows),profit=income-expenses,margin=income>0?profit/income*100:0,pending=sum(pendingRows),registered=sum(registeredRows);
-  const priorRows=dated.filter(item=>inRange(item.date,previous.start,previous.end)).map(item=>item.tx).filter(validTx),priorIncome=sum(priorRows.filter(paidIncome)),priorExpenses=sum(priorRows.filter(tx=>tx.type==="Egreso")),priorProfit=priorIncome-priorExpenses;
+  const income=sum(incomeRows),expenses=sum(expenseRows),pending=sum(pendingRows),registered=sum(registeredRows);
+  const purchaseExpenses=sum(expenseRows.filter(tx=>tx.origin==="product-purchase"));
+  const operatingExpenses=Math.max(0,expenses-purchaseExpenses);
+  const cogs=costOfGoodsSold(incomeRows,products,txs);
+  const grossProfit=income-cogs;
+  const netProfit=grossProfit-operatingExpenses;
+  const margin=income>0?netProfit/income*100:0;
+  const cashFlow=income-expenses;
+
+  const priorRows=dated.filter(item=>inRange(item.date,previous.start,previous.end)).map(item=>item.tx).filter(validTx),priorIncomeRows=priorRows.filter(paidIncome),priorExpenseRows=priorRows.filter(tx=>tx.type==="Egreso"),priorIncome=sum(priorIncomeRows),priorExpenses=sum(priorExpenseRows),priorPurchases=sum(priorExpenseRows.filter(tx=>tx.origin==="product-purchase")),priorOperatingExpenses=Math.max(0,priorExpenses-priorPurchases),priorCogs=costOfGoodsSold(priorIncomeRows,products,txs),priorProfit=priorIncome-priorCogs-priorOperatingExpenses;
   const unknownDates=dated.filter(item=>item.date===null).length;
 
-  const sales=incomeRows.filter(tx=>tx.origin==="product-sale"),unitsSold=sales.reduce((total,tx)=>total+(Number(tx.quantity)||Math.abs(Number(tx.stockDelta))||0),0),productRevenue=sum(sales),cogs=sales.reduce((total,tx)=>total+saleUnitCost(tx,products,txs)*(Number(tx.quantity)||Math.abs(Number(tx.stockDelta))||0),0),productProfit=productRevenue-cogs;
+  const sales=incomeRows.filter(tx=>tx.origin==="product-sale"),unitsSold=sales.reduce((total,tx)=>total+(Number(tx.quantity)||Math.abs(Number(tx.stockDelta))||0),0),productRevenue=sum(sales),productProfit=productRevenue-cogs;
   const productTotals=new Map<string,{units:number;revenue:number;profit:number}>();
   sales.forEach(tx=>{const name=tx.productName||products.find(product=>product.id===tx.productId)?.name||"Producto",units=Number(tx.quantity)||Math.abs(Number(tx.stockDelta))||0,cost=saleUnitCost(tx,products,txs)*units,current=productTotals.get(name)||{units:0,revenue:0,profit:0};current.units+=units;current.revenue+=Number(tx.amount)||0;current.profit+=Number(tx.amount||0)-cost;productTotals.set(name,current)});
   const topProduct=Array.from(productTotals.entries()).sort((a,b)=>b[1].revenue-a[1].revenue)[0];
 
   const serviceStats=services.map(service=>{const matched=incomeRows.filter(tx=>tx.origin==="cash"&&normalize(tx.concept)===normalize(service.name));return{name:service.name,count:matched.length,revenue:sum(matched)}}).filter(item=>item.count>0).sort((a,b)=>b.revenue-a.revenue),serviceRevenue=serviceStats.reduce((total,item)=>total+item.revenue,0),otherRevenue=Math.max(0,income-productRevenue-serviceRevenue);
-  const purchaseExpenses=sum(expenseRows.filter(tx=>tx.origin==="product-purchase")),manualExpenses=sum(expenseRows.filter(tx=>tx.origin==="manual")),otherExpenses=Math.max(0,expenses-purchaseExpenses-manualExpenses);
+  const manualExpenses=sum(expenseRows.filter(tx=>tx.origin==="manual")),otherExpenses=Math.max(0,operatingExpenses-manualExpenses);
   const incomeOrigins=[{name:"Servicios",amount:serviceRevenue},{name:"Productos",amount:productRevenue},{name:"Otros",amount:otherRevenue}].filter(item=>item.amount>0).sort((a,b)=>b.amount-a.amount);
-  const expenseOrigins=[{name:"Compras",amount:purchaseExpenses},{name:"Gastos",amount:manualExpenses},{name:"Otros",amount:otherExpenses}].filter(item=>item.amount>0).sort((a,b)=>b.amount-a.amount);
+  const operatingExpenseOrigins=[{name:"Gastos registrados",amount:manualExpenses},{name:"Otros gastos",amount:otherExpenses}].filter(item=>item.amount>0).sort((a,b)=>b.amount-a.amount);
   const methods=new Map<string,number>();incomeRows.forEach(tx=>methods.set(tx.method||"Otros",(methods.get(tx.method||"Otros")||0)+(Number(tx.amount)||0)));const methodRows=Array.from(methods.entries()).sort((a,b)=>b[1]-a[1]);
 
   const detail=useMemo(()=>rows.filter(tx=>{const text=`${tx.concept} ${tx.reference} ${tx.productName||""}`.toLowerCase();return text.includes(query.toLowerCase())&&(typeFilter==="Todos"||tx.type===typeFilter)}).sort((a,b)=>(txDate(b)?.getTime()||0)-(txDate(a)?.getTime()||0)),[rows,query,typeFilter]);
@@ -106,19 +121,19 @@ export function AccountingPanel({txs,products,services}:{txs:Tx[];products:Produ
 
     {view==="summary"?<>
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:10}}>
-        <Kpi icon={<ArrowUpRight/>} label="Ingresos" value={money(income)} change={variation(income,priorIncome)}/><Kpi icon={<ArrowDownRight/>} label="Egresos" value={money(expenses)} change={variation(expenses,priorExpenses)} invert/><Kpi icon={<TrendingUp/>} label="Utilidad" value={money(profit)} change={variation(profit,priorProfit)}/><Kpi icon={<CircleDollarSign/>} label="Margen" value={pct(margin)}/>
+        <Kpi icon={<ArrowUpRight/>} label="Ingresos" value={money(income)} change={variation(income,priorIncome)}/><Kpi icon={<ArrowDownRight/>} label="Costo de ventas" value={money(cogs)}/><Kpi icon={<TrendingUp/>} label="Utilidad neta" value={money(netProfit)} change={variation(netProfit,priorProfit)}/><Kpi icon={<CircleDollarSign/>} label="Margen neto" value={pct(margin)}/>
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:10,minHeight:0}}>
         <section className="panel" style={compactPanel}><Heading title="Resumen financiero"/><MiniRow label="Facturado" value={money(registered)}/><MiniRow label="Cobrado" value={money(income)}/><MiniRow label="Pendiente" value={money(pending)}/><MiniRow label="Operaciones" value={String(valid.length)}/></section>
         <section className="panel" style={compactPanel}><Heading title="Ingresos"/>{incomeOrigins.length?incomeOrigins.slice(0,3).map(item=><ShareRow key={item.name} label={item.name} amount={item.amount} total={income}/>):<Empty/>}<MiniRow label="Método principal" value={methodRows[0]?.[0]||"Sin datos"}/></section>
-        <section className="panel" style={compactPanel}><Heading title="Egresos"/>{expenseOrigins.length?expenseOrigins.slice(0,3).map(item=><ShareRow key={item.name} label={item.name} amount={item.amount} total={expenses}/>):<Empty/>}<MiniRow label="Total egresos" value={money(expenses)}/></section>
-        <section className="panel" style={compactPanel}><Heading title="Productos"/><MiniRow label="Vendidos" value={`${unitsSold} u.`}/><MiniRow label="Facturación" value={money(productRevenue)}/><MiniRow label="Costo" value={money(cogs)}/><MiniRow label="Utilidad bruta" value={money(productProfit)}/>{topProduct&&<MiniRow label="Más vendido" value={topProduct[0]}/>}</section>
+        <section className="panel" style={compactPanel}><Heading title="Costos y gastos"/><MiniRow label="Costo de ventas" value={money(cogs)}/>{operatingExpenseOrigins.length?operatingExpenseOrigins.slice(0,2).map(item=><MiniRow key={item.name} label={item.name} value={money(item.amount)}/>):<MiniRow label="Gastos operativos" value={money(operatingExpenses)}/>}<MiniRow label="Compras de inventario" value={money(purchaseExpenses)}/></section>
+        <section className="panel" style={compactPanel}><Heading title="Productos"/><MiniRow label="Vendidos" value={`${unitsSold} u.`}/><MiniRow label="Facturación" value={money(productRevenue)}/><MiniRow label="Costo vendido" value={money(cogs)}/><MiniRow label="Utilidad bruta" value={money(productProfit)}/>{topProduct&&<MiniRow label="Más vendido" value={topProduct[0]}/>}</section>
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,minHeight:0}}>
         <section className="panel" style={compactPanel}><Heading title="Servicios destacados"/>{serviceStats.length?serviceStats.slice(0,4).map(item=><MiniRow key={item.name} label={`${item.name} · ${item.count}`} value={money(item.revenue)}/>):<Empty/>}</section>
-        <section className="panel" style={compactPanel}><Heading title="Lectura rápida"/><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}><Quick label="Balance" value={money(profit)}/><Quick label="Pendiente" value={money(pending)}/><Quick label="Margen productos" value={pct(productRevenue>0?productProfit/productRevenue*100:0)}/></div></section>
+        <section className="panel" style={compactPanel}><Heading title="Lectura rápida"/><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}><Quick label="Flujo de caja" value={money(cashFlow)}/><Quick label="Utilidad bruta" value={money(grossProfit)}/><Quick label="Margen productos" value={pct(productRevenue>0?productProfit/productRevenue*100:0)}/></div><small style={{display:"block",marginTop:8,color:"#7d8581",fontSize:9}}>Las compras de inventario afectan el flujo de caja, pero solo el costo de las unidades vendidas afecta la utilidad.</small></section>
       </div>
     </>:<section className="panel" style={{...compactPanel,display:"grid",gap:8}}>
       <div style={{display:"flex",gap:8,alignItems:"center"}}><div className="search" style={{margin:0,flex:1}}><Search/><Input value={query} onChange={event=>{setQuery(event.target.value);setPage(0)}} placeholder="Buscar movimiento"/></div><select value={typeFilter} onChange={event=>{setTypeFilter(event.target.value);setPage(0)}} style={button}><option>Todos</option><option>Ingreso</option><option>Egreso</option></select></div>
