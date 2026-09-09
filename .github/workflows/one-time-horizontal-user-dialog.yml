@@ -1,0 +1,32 @@
+name: Apply ASHA horizontal user dialog
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-time-horizontal-user-dialog.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply scoped layout correction
+        run: python scripts/horizontal-user-dialog.py
+      - name: Install dependencies
+        run: npm install
+      - name: Build
+        run: npm run build
+      - name: Commit layout correction
+        run: |
+          git config user.name "ASHA maintenance"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/globals.css
+          git commit -m "fix(users): compact horizontal edit dialog" || exit 0
+          git push origin main
