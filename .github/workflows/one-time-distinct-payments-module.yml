@@ -1,0 +1,33 @@
+name: Fix distinct payments module
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-time-distinct-payments-module.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply scoped correction
+        run: python scripts/fix-distinct-payments-module.py
+      - name: Install dependencies
+        run: npm install
+      - name: Build and regression tests
+        run: npm test
+      - name: Commit functional files only
+        run: |
+          git config user.name "ASHA maintenance"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/page.tsx app/patient-billing.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(finance): separate Pagos from Caja y cobros"
+          git push
