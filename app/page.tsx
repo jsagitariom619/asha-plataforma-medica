@@ -1337,7 +1337,7 @@ export default function Home() {
         appointments={appointments}
         attentionPatientId={attentionPatientId}
         selectedAgendaDate={selectedAgendaDate}
-        appointmentManualAllowed={isPrimary}
+        appointmentManualAllowed={canAccess("Agenda")}
         addPatient={(p) => setPatients((v) => [p, ...v])}
         addAttention={saveAttention}
         addService={(s) => setServices((v) => [s, ...v])}
