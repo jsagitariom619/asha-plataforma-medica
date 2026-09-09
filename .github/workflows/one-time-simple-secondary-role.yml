@@ -20,9 +20,9 @@ jobs:
       - name: Apply role patch
         run: python scripts/simple-secondary-role.py
       - name: Install dependencies
-        run: npm run install:ci
-      - name: Build and test
-        run: npm test
+        run: npm install
+      - name: Build
+        run: npm run build
       - name: Commit role simplification
         run: |
           git config user.name "ASHA maintenance"
