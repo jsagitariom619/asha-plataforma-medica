@@ -1,0 +1,36 @@
+name: Add admin manual appointment option
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-time-admin-manual-appointment.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply scoped correction
+        run: python scripts/admin-manual-appointment.py
+      - name: Install dependencies
+        run: npm install
+      - name: Build and regression tests
+        run: npm test
+      - name: Commit functional files only
+        run: |
+          if git diff --quiet -- app/page.tsx; then
+            echo 'No functional change required.'
+            exit 0
+          fi
+          git config user.name 'ASHA maintenance'
+          git config user.email 'actions@users.noreply.github.com'
+          git add app/page.tsx
+          git commit -m 'fix(agenda): allow primary admin manual appointment patient'
+          git push
