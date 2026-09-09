@@ -350,14 +350,14 @@ export default function Home() {
     [editingService, setEditingService] = useState<Service | null>(null),
     [flash, setFlash] = useState("");
   const [professionalName, setProfessionalName] =
-      useState("Dra. Andrea Vargas"),
+      useState("Profesional ASHA"),
     [hydrated, setHydrated] = useState(false),
     [authReady, setAuthReady] = useState(false),
     [currentUserId, setCurrentUserId] = useState<number | null>(null),
     [bootstrapState, setBootstrapState] = useState<BootstrapState>("configured"),
     [cloudReady, setCloudReady] = useState(false);
   const [greeting, setGreeting] = useState("Buenos días"),
-    [dateLabel, setDateLabel] = useState("Viernes, 4 de septiembre"),
+    [dateLabel, setDateLabel] = useState(todayLabel()),
     [selectedAgendaDate, setSelectedAgendaDate] = useState(boliviaTodayKey()),
     [attentionPatientId, setAttentionPatientId] = useState<number | null>(null);
   const notificationRef = useRef<HTMLDivElement>(null);

@@ -12,7 +12,6 @@ import "./aesthetic-history.css";
 import "./patient-profile.css";
 import "./clinical-record-actions.css";
 import "./clinical-ui-punctual-fixes.css";
-import "./test-data-reset.css";
 import "./responsive-harmony.css";
 const manrope = Manrope({ subsets: ["latin"], variable: "--font-body" });
 export const metadata: Metadata = {
