@@ -388,7 +388,6 @@ export default function Home() {
         const merged=mergeCloudUser([],cloudUser);
         setUsers(merged.users);
         setCurrentUserId(merged.userId);
-        setProfessionalName(cloudUser.fullName);
         setHydrated(true);
         setAuthReady(true);
         setBootstrapState("configured");
@@ -461,22 +460,6 @@ export default function Home() {
     }, 0);
     return () => clearTimeout(timer);
   }, []);
-  useEffect(() => {
-    if (!hydrated) return;
-    setUsers((current) =>
-      current.map((u, index) =>
-        index === 0
-          ? {
-              ...u,
-              name: professionalName,
-              initials: userInitials(professionalName),
-              active: true,
-              permissions: [...MODULES],
-            }
-          : u,
-      ),
-    );
-  }, [professionalName, hydrated]);
   useEffect(() => {
     if (!notificationsOpen) return;
     const onPointerDown = (event: PointerEvent) => {
@@ -859,7 +842,6 @@ export default function Home() {
       const data=await response.json().catch(()=>({}));
       if(!response.ok||data?.ok!==true)return typeof data?.error==="string"?data.error:"No se pudo actualizar el usuario.";
       setUsers(current=>current.map(user=>user.id===updated.id?{...updated,isPrimaryAdmin:data.user?.isPrimaryAdmin===true}:user));
-      if(updated.id===currentUserId&&updated.name!==professionalName)setProfessionalName(updated.name);
       notify("Usuario actualizado correctamente");setUserAction(null);return "";
     }catch{return "No se pudo actualizar el usuario."}
   };
@@ -904,7 +886,7 @@ export default function Home() {
       const data=await response.json().catch(()=>({}));
       if(!response.ok||data?.ok!==true||!data.user)return typeof data?.error==="string"?data.error:"No se pudo iniciar sesión.";
       const cloudUser=data.user as CloudUser,merged=mergeCloudUser([],cloudUser);
-      setUsers(merged.users);setCurrentUserId(merged.userId);setProfessionalName(cloudUser.fullName);setHydrated(true);setBootstrapState("configured");setCloudReady(false);
+      setUsers(merged.users);setCurrentUserId(merged.userId);setHydrated(true);setBootstrapState("configured");setCloudReady(false);
       void (async()=>{
         try{
           const stateResponse=await fetch("/api/clinic-state",{credentials:"same-origin",cache:"no-store"}),stateData=await stateResponse.json().catch(()=>({}));
@@ -1259,10 +1241,10 @@ export default function Home() {
             <>
               <SectionLead text="Roles y permisos de acceso" />
               <div className="cards">
-                {users.map((u, index) => (
+                {users.map((u) => (
                   <article className="panel user" key={u.id}>
                     <UserAvatar user={u} large />
-                    <h3>{index === 0 ? professionalName : u.name}</h3>
+                    <h3>{u.name}</h3>
                     <p>{u.role}</p>
                     <span className={u.active ? "tag" : "tag inactive"}>
                       {u.active ? "Activo" : "Inactivo"}
