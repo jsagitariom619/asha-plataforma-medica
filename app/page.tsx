@@ -185,6 +185,7 @@ const MODULES = [
   "Agenda",
   "Servicios",
   "Productos",
+  "Pagos",
   "Caja y cobros",
   "Movimientos",
   "Contabilidad",
@@ -199,7 +200,7 @@ const defaultPermissions = (role: string) => {
   if (role.includes("Admin")) return [...NON_ACCOUNTING_MODULES];
   // Secondary users work operationally without managing master/configuration data.
   // Clinical history remains role-specific; Productos is available to sell.
-  const operational = ["Resumen", "Pacientes", "Agenda", "Servicios", "Productos", "Caja y cobros"];
+  const operational = ["Resumen", "Pacientes", "Agenda", "Servicios", "Productos", "Pagos", "Caja y cobros"];
   if (role.includes("Médico")) return [...operational, "Historias clínicas"];
   return operational;
 };
@@ -249,6 +250,7 @@ const nav = [
   ["Agenda", CalendarDays],
   ["Servicios", Stethoscope],
   ["Productos", PackageOpen],
+  ["Pagos", Banknote],
   ["Caja y cobros", WalletCards],
   ["Movimientos", CircleDollarSign],
   ["Contabilidad", Banknote],
@@ -475,7 +477,9 @@ export default function Home() {
   const isPrimary = currentUser?.isPrimaryAdmin === true;
   const canAccess = (module: string) =>
     !!currentUser &&
-    (isPrimary || (currentUser.permissions ?? []).includes(module));
+    (isPrimary ||
+      (currentUser.permissions ?? []).includes(module) ||
+      (module === "Pagos" && (currentUser.permissions ?? []).includes("Caja y cobros")));
   const visibleNav = nav.filter(([label]) => canAccess(label));
   useEffect(() => {
     if (!isPrimary || cloudUsersLoaded.current) return;
@@ -1222,6 +1226,17 @@ export default function Home() {
                 setFilter={setProductFilter}
                 action={setProductAction}
                 adminMode={isPrimary}
+              />
+            </>
+          )}
+          {section === "Pagos" && (
+            <>
+              <SectionLead text="Pagos de pacientes, saldos y abonos registrados" />
+              <PatientBillingPanel
+                patients={patients}
+                attentions={attentions}
+                txs={txs}
+                onPayment={registerPatientPayment}
               />
             </>
           )}
@@ -2537,6 +2552,7 @@ function Entry({
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [manualAppointment, setManualAppointment] = useState(false),
+    [manualAppointmentService, setManualAppointmentService] = useState(false),
     [newUserRole, setNewUserRole] = useState("Médico"),
     [newUserPermissions, setNewUserPermissions] = useState<string[]>(
       defaultPermissions("Médico"),
@@ -2545,6 +2561,7 @@ function Entry({
     setError("");
     setBusy(false);
     setManualAppointment(false);
+    setManualAppointmentService(false);
     setNewUserRole("Médico");
     setNewUserPermissions(defaultPermissions("Médico"));
   }, [type]);
@@ -2687,12 +2704,19 @@ function Entry({
         setError("Ingresa o selecciona un paciente.");
         return;
       }
+      const serviceName = manualAppointmentService
+        ? String(f.get("manualService") || "").trim()
+        : String(f.get("service") || "").trim();
+      if (!serviceName) {
+        setError("Ingresa o selecciona un servicio.");
+        return;
+      }
       addAppointment({
         id,
         date: String(f.get("date") || selectedAgendaDate),
         time: String(f.get("time")),
         patient: patientName,
-        service: String(f.get("service")),
+        service: serviceName,
         status: String(f.get("appointmentStatus")),
       });
     }
@@ -2871,17 +2895,35 @@ function Entry({
                   </select>
                 </Field>
               )}
-              <Field label="Servicio">
-                <select name="service" required>
-                  {services
-                    .filter((s) => s.active)
-                    .map((s) => (
-                      <option key={s.id} value={s.name}>
-                        {s.name}
-                      </option>
-                    ))}
-                </select>
-              </Field>
+              <label className="form-note" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={manualAppointmentService}
+                  onChange={(event) => setManualAppointmentService(event.target.checked)}
+                />
+                Registrar servicio manualmente para esta cita
+              </label>
+              {manualAppointmentService ? (
+                <Field label="Servicio (registro manual)">
+                  <Input
+                    name="manualService"
+                    placeholder="Ej. Control, valoración, procedimiento especial"
+                    required
+                  />
+                </Field>
+              ) : (
+                <Field label="Servicio">
+                  <select name="service" required>
+                    {services
+                      .filter((s) => s.active)
+                      .map((s) => (
+                        <option key={s.id} value={s.name}>
+                          {s.name}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
+              )}
               <Field label="Estado">
                 <select name="appointmentStatus" defaultValue="Confirmada">
                   <option>Confirmada</option>
