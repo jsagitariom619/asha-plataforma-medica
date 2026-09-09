@@ -319,16 +319,11 @@ export function PatientProfileCompat() {
   const openEdit = () =>
     dispatch("asha-edit-clinical-history", { patient: patient.name });
   const openAttention = () => {
-    const name = patient.name;
-    setPatient(null);
-    window.setTimeout(
-      () =>
-        window.dispatchEvent(
-          new CustomEvent("asha-open-new-attention", {
-            detail: { patient: name },
-          }),
-        ),
-      0,
+    // Open the existing attention editor for this patient without closing the expediente.
+    window.dispatchEvent(
+      new CustomEvent("asha-open-attention-for-patient", {
+        detail: { patient: patient.name },
+      }),
     );
   };
   const registerPayment = (event: FormEvent<HTMLFormElement>) => {

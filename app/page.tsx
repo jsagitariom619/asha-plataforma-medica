@@ -603,6 +603,24 @@ export default function Home() {
     setAttentionPatientId(patientId ?? null);
     setModal("history");
   };
+  useEffect(() => {
+    const onOpenAttentionForPatient = (event: Event) => {
+      const name =
+        (event as CustomEvent<{ patient?: string }>).detail?.patient?.trim() || "";
+      if (!name) return;
+      const selected = patients.find((patient) => patient.name === name);
+      if (selected) openAttention(selected.id);
+    };
+    window.addEventListener(
+      "asha-open-attention-for-patient",
+      onOpenAttentionForPatient as EventListener,
+    );
+    return () =>
+      window.removeEventListener(
+        "asha-open-attention-for-patient",
+        onOpenAttentionForPatient as EventListener,
+      );
+  }, [patients]);
   const closeEntry = () => {
     setModal(null);
     setAttentionPatientId(null);
