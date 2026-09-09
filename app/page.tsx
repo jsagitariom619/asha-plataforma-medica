@@ -13,6 +13,7 @@ import {
   ArrowUpRight,
   Banknote,
   Bell,
+  RefreshCw,
   CalendarDays,
   ChevronRight,
   CircleDollarSign,
@@ -1027,6 +1028,15 @@ export default function Home() {
             <h1>{section}</h1>
           </div>
           <div className="head-actions">
+            <button
+              aria-label="Actualizar página"
+              title="Actualizar página"
+              className="bell"
+              type="button"
+              onClick={() => window.location.reload()}
+            >
+              <RefreshCw />
+            </button>
             <div className="notifications-wrap" ref={notificationRef}>
               <button
                 aria-label="Notificaciones"
