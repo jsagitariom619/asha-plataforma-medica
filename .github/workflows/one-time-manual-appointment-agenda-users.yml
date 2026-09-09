@@ -1,0 +1,34 @@
+name: Allow manual appointment for agenda users
+
+on:
+  push:
+    paths:
+      - '.github/workflows/one-time-manual-appointment-agenda-users.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply scoped correction
+        run: python scripts/allow-manual-appointment-for-agenda-users.py
+      - name: Install dependencies
+        run: npm install
+      - name: Build and regression tests
+        run: npm test
+      - name: Commit functional file only
+        run: |
+          git config user.name "ASHA maintenance"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/page.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(agenda): allow manual patient entry for agenda users"
+          git push origin main
