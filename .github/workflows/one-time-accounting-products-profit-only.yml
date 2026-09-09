@@ -30,3 +30,4 @@ jobs:
           git add app/accounting.tsx
           git commit -m "fix(accounting): calculate profit only for product sales" || exit 0
           git push origin main
+# retry after type-check correction
