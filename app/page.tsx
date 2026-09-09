@@ -197,19 +197,11 @@ const NON_ACCOUNTING_MODULES = MODULES.filter(
 const BOLIVIA_TZ = "America/La_Paz";
 const defaultPermissions = (role: string) => {
   if (role.includes("Admin")) return [...NON_ACCOUNTING_MODULES];
-  if (role.includes("Recepción"))
-    return ["Resumen", "Pacientes", "Agenda", "Productos", "Caja y cobros"];
-  if (role.includes("Médico"))
-    return [
-      "Resumen",
-      "Pacientes",
-      "Historias clínicas",
-      "Agenda",
-      "Servicios",
-    ];
-  if (role.includes("Enfermería"))
-    return ["Resumen", "Pacientes", "Agenda", "Servicios"];
-  return ["Resumen"];
+  // Secondary users work operationally without managing master/configuration data.
+  // Clinical history remains role-specific; Productos is available to sell.
+  const operational = ["Resumen", "Pacientes", "Agenda", "Servicios", "Productos", "Caja y cobros"];
+  if (role.includes("Médico")) return [...operational, "Historias clínicas"];
+  return operational;
 };
 const userInitials = (name: string) =>
   name
@@ -736,6 +728,7 @@ export default function Home() {
     return "";
   };
   const saveProduct = (product: Product) => {
+    if (!isPrimary) { notify("Solo la administradora principal puede modificar productos."); return; }
     setProducts((current) =>
       current.some((p) => p.id === product.id)
         ? current.map((p) => (p.id === product.id ? product : p))
@@ -797,6 +790,7 @@ export default function Home() {
     provider: string,
     note: string,
   ) => {
+    if (!isPrimary) { notify("Solo la administradora principal puede modificar el inventario."); return; }
     if (quantity < 1 || cost < 0) return;
     const amount = cost * quantity,
       operationId = `PC-${Date.now()}`;
@@ -1209,6 +1203,7 @@ export default function Home() {
                 filter={productFilter}
                 setFilter={setProductFilter}
                 action={setProductAction}
+                adminMode={isPrimary}
               />
             </>
           )}
