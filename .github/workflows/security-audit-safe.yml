@@ -1,0 +1,34 @@
+name: ASHA dependency security audit
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/security-audit-safe.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Security audit report
+        run: npm audit --json > audit.json || true
+      - name: Safe fix dry-run
+        run: npm audit fix --dry-run --json > audit-fix-dry-run.json || true
+      - name: Summarize
+        run: |
+          node - <<'NODE'
+          const fs=require('fs');
+          for (const f of ['audit.json','audit-fix-dry-run.json']) {
+            const j=JSON.parse(fs.readFileSync(f,'utf8'));
+            console.log(`=== ${f} ===`);
+            console.log(JSON.stringify({metadata:j.metadata,vulnerabilities:j.vulnerabilities,added:j.added,removed:j.removed,changed:j.changed},null,2));
+          }
+          NODE
