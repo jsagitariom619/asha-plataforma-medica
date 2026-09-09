@@ -4,6 +4,7 @@ import { AestheticHistoryCompat } from "@/components/aesthetic-history";
 import { PatientProfileCompat } from "@/components/patient-profile";
 import { ClinicalRecordActionsCompat } from "@/components/clinical-record-actions";
 import { ClinicalUiPunctualFixes } from "@/components/clinical-ui-punctual-fixes";
+import { AppointmentReschedule } from "@/components/appointment-reschedule";
 import "./globals.css";
 import "./users.css";
 import "./auth.css";
@@ -35,6 +36,7 @@ export default function RootLayout({
         <ClinicalUiPunctualFixes />
         <PatientProfileCompat />
         <AestheticHistoryCompat />
+        <AppointmentReschedule />
         {children}
       </body>
     </html>
