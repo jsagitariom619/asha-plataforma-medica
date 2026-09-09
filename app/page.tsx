@@ -1312,6 +1312,7 @@ export default function Home() {
         appointments={appointments}
         attentionPatientId={attentionPatientId}
         selectedAgendaDate={selectedAgendaDate}
+        appointmentManualAllowed={isPrimary}
         addPatient={(p) => setPatients((v) => [p, ...v])}
         addAttention={saveAttention}
         addService={(s) => setServices((v) => [s, ...v])}
@@ -2509,6 +2510,7 @@ function Entry({
   appointments,
   attentionPatientId,
   selectedAgendaDate,
+  appointmentManualAllowed,
   addPatient,
   addAttention,
   addService,
@@ -2524,6 +2526,7 @@ function Entry({
   appointments: Appointment[];
   attentionPatientId: number | null;
   selectedAgendaDate: string;
+  appointmentManualAllowed: boolean;
   addPatient: (p: Patient) => void;
   addAttention: (a: Attention, initialPayment: number, method: string) => void;
   addService: (s: Service) => void;
@@ -2533,6 +2536,7 @@ function Entry({
 }) {
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
+    [manualAppointment, setManualAppointment] = useState(false),
     [newUserRole, setNewUserRole] = useState("Médico"),
     [newUserPermissions, setNewUserPermissions] = useState<string[]>(
       defaultPermissions("Médico"),
@@ -2540,6 +2544,7 @@ function Entry({
   useEffect(() => {
     setError("");
     setBusy(false);
+    setManualAppointment(false);
     setNewUserRole("Médico");
     setNewUserPermissions(defaultPermissions("Médico"));
   }, [type]);
@@ -2673,15 +2678,24 @@ function Entry({
         duration: String(f.get("duration")),
         active: true,
       });
-    if (type === "appointment")
+    if (type === "appointment") {
+      const patientName =
+        appointmentManualAllowed && manualAppointment
+          ? String(f.get("manualPatient") || "").trim()
+          : String(f.get("patient") || "").trim();
+      if (!patientName) {
+        setError("Ingresa o selecciona un paciente.");
+        return;
+      }
       addAppointment({
         id,
         date: String(f.get("date") || selectedAgendaDate),
         time: String(f.get("time")),
-        patient: String(f.get("patient")),
+        patient: patientName,
         service: String(f.get("service")),
         status: String(f.get("appointmentStatus")),
       });
+    }
     if (type === "cash")
       addTx({
         id,
@@ -2827,15 +2841,36 @@ function Entry({
                   <Input name="time" type="time" required />
                 </Field>
               </div>
-              <Field label="Paciente">
-                <select name="patient" required>
-                  {patients.map((p) => (
-                    <option key={p.id} value={p.name}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+              {appointmentManualAllowed && (
+                <label className="form-note" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={manualAppointment}
+                    onChange={(event) => setManualAppointment(event.target.checked)}
+                  />
+                  Registrar paciente manualmente para esta cita
+                </label>
+              )}
+              {appointmentManualAllowed && manualAppointment ? (
+                <Field label="Paciente (registro manual)">
+                  <Input
+                    name="manualPatient"
+                    placeholder="Nombre completo"
+                    required
+                    autoFocus
+                  />
+                </Field>
+              ) : (
+                <Field label="Paciente">
+                  <select name="patient" required>
+                    {patients.map((p) => (
+                      <option key={p.id} value={p.name}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
               <Field label="Servicio">
                 <select name="service" required>
                   {services
