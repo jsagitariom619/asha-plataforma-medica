@@ -1,0 +1,33 @@
+name: Preserve patient expediente when cancelling clinical editor
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-time-preserve-patient-profile.yml'
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply scoped navigation fix
+        run: python scripts/preserve-patient-profile-on-clinical-cancel.py
+      - name: Install dependencies
+        run: npm ci
+      - name: Build and regression tests
+        run: npm test
+      - name: Commit functional files only
+        run: |
+          git config user.name "ASHA maintenance"
+          git config user.email "actions@users.noreply.github.com"
+          git add components/patient-profile.tsx components/aesthetic-history.tsx
+          git commit -m "fix(clinical): return to patient expediente on cancel" || exit 0
+          git push origin main
