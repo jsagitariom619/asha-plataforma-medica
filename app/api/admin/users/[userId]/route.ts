@@ -21,7 +21,7 @@ export async function PATCH(request:Request,{params}:{params:Promise<{userId:str
     const fullName=String(body.fullName||"").trim(),username=normalizeUsername(String(body.username||"")),role=String(body.role||"Usuario").trim(),pin=String(body.pin||""),permissions=sanitizePermissions(body.permissions),active=body.active!==false,contactEmail=String(body.email||"").trim()||null;
     if(fullName.length<3||fullName.length>120)return fail("El nombre no es válido.");
     if(!/^[a-z0-9._-]{3,40}$/.test(username))return fail("El nombre de usuario no es válido.");
-    if(pin&&!/^\d{6}$/.test(pin))return fail("El PIN debe tener exactamente 6 dígitos.");
+    if(pin&&(pin.length<6||pin.length>72))return fail("Utilice una contraseña de al menos 6 caracteres.");
     if(!VALID_ROLES.has(role))return fail("El rol seleccionado no es válido.");
     const targetResponse=await supabaseAdminFetch(`/rest/v1/profiles?select=id,username,is_primary_admin&id=eq.${encodeURIComponent(userId)}&limit=1`,{headers:{Accept:"application/json"}});
     if(!targetResponse.ok)return fail("No se pudo consultar el usuario.",503);

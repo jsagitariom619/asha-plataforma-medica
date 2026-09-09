@@ -153,8 +153,8 @@ export async function POST(request: Request) {
         "El usuario debe tener entre 3 y 40 caracteres y usar solo letras, números, punto, guion o guion bajo.",
       );
     }
-    if (!/^\d{6}$/.test(pin)) {
-      return responseError("El PIN debe tener exactamente 6 dígitos.");
+    if (pin.length < 6 || pin.length > 72) {
+      return responseError("Utilice una contraseña de al menos 6 caracteres.");
     }
     if (!VALID_ROLES.has(role)) {
       return responseError("El rol seleccionado no es válido.");

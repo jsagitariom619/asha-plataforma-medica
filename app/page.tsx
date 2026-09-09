@@ -2311,7 +2311,7 @@ function UserDialog({
     const f=new FormData(e.currentTarget),name=String(f.get("name")||"").trim(),role=String(f.get("role")||"Usuario"),active=isPrimary?true:String(f.get("active"))==="true",username=normalizeUsername(String(f.get("username")||"")),pin=String(f.get("password")||""),confirm=String(f.get("confirm")||"");
     if(!username){setError("El nombre de usuario es obligatorio.");return}
     if(users.some(item=>item.id!==user.id&&normalizeUsername(item.username||"")===username)){setError("Este nombre de usuario ya está en uso.");return}
-    if(pin||confirm){if(!/^\\d{6}$/.test(pin)){setError("El PIN debe tener exactamente 6 dígitos.");return}if(pin!==confirm){setError("Los PIN no coinciden.");return}}
+    if(pin||confirm){if(pin.length<6||pin.length>72){setError("Utilice una contraseña de al menos 6 caracteres.");return}if(pin!==confirm){setError("Las contraseñas no coinciden.");return}}
     let avatarUrl=removeAvatar?undefined:user.avatarUrl;setBusy(true);
     try{
       if((avatarFile||removeAvatar)&&user.cloudId){
@@ -2420,14 +2420,13 @@ function UserDialog({
                   name="password"
                   type="password"
                   minLength={6}
-                  inputMode="numeric"
-                  maxLength={6}
-                  pattern="[0-9]{6}"
+                  maxLength={72}
+                  autoComplete="new-password"
                   placeholder="Dejar vacío para conservar"
                 />
               </Field>
               <Field label="Confirmar nueva contraseña">
-                <Input name="confirm" type="password" inputMode="numeric" minLength={6} maxLength={6} pattern="[0-9]{6}" />
+                <Input name="confirm" type="password" minLength={6} maxLength={72} autoComplete="new-password" />
               </Field>
             </div>
             <Field label="Estado">
@@ -2565,8 +2564,8 @@ function Entry({
     if (type === "user") {
       const fullName = String(f.get("name") || "").trim(),
         username = normalizeUsername(String(f.get("username") || "")),
-        pin = String(f.get("pin") || "").trim(),
-        confirm = String(f.get("confirm") || "").trim(),
+        pin = String(f.get("pin") || ""),
+        confirm = String(f.get("confirm") || ""),
         active = String(f.get("active")) !== "false";
       if (fullName.length < 3) {
         setError("El nombre del usuario no es válido.");
@@ -2582,12 +2581,12 @@ function Entry({
         setError("Ese nombre de usuario ya está en uso.");
         return;
       }
-      if (!/^\d{6}$/.test(pin)) {
-        setError("El PIN debe tener exactamente 6 dígitos.");
+      if (pin.length < 6 || pin.length > 72) {
+        setError("Utilice una contraseña de al menos 6 caracteres.");
         return;
       }
       if (pin !== confirm) {
-        setError("Los PIN no coinciden.");
+        setError("Las contraseñas no coinciden.");
         return;
       }
       setBusy(true);
@@ -2970,27 +2969,23 @@ function Entry({
                 />
               </Field>
               <div className="cols">
-                <Field label="PIN">
+                <Field label="Contraseña">
                   <Input
                     name="pin"
                     type="password"
-                    inputMode="numeric"
                     autoComplete="new-password"
                     minLength={6}
-                    maxLength={6}
-                    pattern="[0-9]{6}"
+                    maxLength={72}
                     required
                   />
                 </Field>
-                <Field label="Confirmar PIN">
+                <Field label="Confirmar contraseña">
                   <Input
                     name="confirm"
                     type="password"
-                    inputMode="numeric"
                     autoComplete="new-password"
                     minLength={6}
-                    maxLength={6}
-                    pattern="[0-9]{6}"
+                    maxLength={72}
                     required
                   />
                 </Field>
