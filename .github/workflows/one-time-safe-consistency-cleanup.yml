@@ -27,6 +27,7 @@ jobs:
         run: |
           git config user.name "ASHA maintenance"
           git config user.email "actions@users.noreply.github.com"
-          git add app/page.tsx app/layout.tsx scripts/install-ci.sh
-          git commit -m "chore: remove stale placeholders and test styling" || exit 0
+          git add app/page.tsx app/layout.tsx
+          git commit -m "chore: remove final stale professional fallback" || exit 0
           git push origin main
+# retry: 2
