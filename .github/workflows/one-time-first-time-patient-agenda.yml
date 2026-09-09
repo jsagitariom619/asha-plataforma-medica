@@ -1,0 +1,32 @@
+name: Clarify first-time patient agenda option
+on:
+  push:
+    paths:
+      - '.github/workflows/one-time-first-time-patient-agenda.yml'
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Apply scoped correction
+        run: python scripts/clarify-new-patient-appointment.py
+      - name: Install dependencies
+        run: npm ci
+      - name: Build and regression tests
+        run: |
+          npm test
+          npm run build
+      - name: Commit functional file only
+        run: |
+          git config user.name 'ASHA maintenance'
+          git config user.email 'actions@users.noreply.github.com'
+          git add app/page.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix(agenda): clarify first-time unregistered patient option'
+          git push
