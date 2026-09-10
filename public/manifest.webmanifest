@@ -2,7 +2,7 @@
   "name": "ASHA Integrative Medicine",
   "short_name": "ASHA",
   "description": "Gestión clínica y financiera de ASHA Integrative Medicine",
-  "start_url": "/",
+  "start_url": "/?pwa=4",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
@@ -10,21 +10,15 @@
   "theme_color": "#F5EEE6",
   "icons": [
     {
-      "src": "/asha-icon-192.svg?v=3",
-      "sizes": "192x192",
-      "type": "image/svg+xml",
+      "src": "/asha-logo.jpg?v=4",
+      "sizes": "1280x1280",
+      "type": "image/jpeg",
       "purpose": "any"
     },
     {
-      "src": "/asha-icon-512.svg?v=3",
-      "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
-    {
-      "src": "/asha-icon-512.svg?v=3",
-      "sizes": "512x512",
-      "type": "image/svg+xml",
+      "src": "/asha-logo.jpg?v=4",
+      "sizes": "1280x1280",
+      "type": "image/jpeg",
       "purpose": "maskable"
     }
   ]
