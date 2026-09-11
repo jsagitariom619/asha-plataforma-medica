@@ -6,6 +6,7 @@ import { PatientProductSalesCompat } from "@/components/patient-product-sales";
 import { ClinicalRecordActionsCompat } from "@/components/clinical-record-actions";
 import { ClinicalUiPunctualFixes } from "@/components/clinical-ui-punctual-fixes";
 import { AppointmentReschedule } from "@/components/appointment-reschedule";
+import { TestDataReset } from "@/components/test-data-reset";
 import "./globals.css";
 import "./users.css";
 import "./auth.css";
@@ -15,6 +16,7 @@ import "./patient-profile.css";
 import "./clinical-record-actions.css";
 import "./clinical-ui-punctual-fixes.css";
 import "./responsive-harmony.css";
+import "./test-data-reset.css";
 const manrope = Manrope({ subsets: ["latin"], variable: "--font-body" });
 export const metadata: Metadata = {
   title: "ASHA | Gestión Médica",
@@ -46,6 +48,7 @@ export default function RootLayout({
         <PatientProductSalesCompat />
         <AestheticHistoryCompat />
         <AppointmentReschedule />
+        <TestDataReset />
         {children}
       </body>
     </html>
