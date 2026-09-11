@@ -56,7 +56,6 @@ export function PatientProductSalesCompat(){
 
   const patientTxs=useMemo(()=>patient?txs.filter(tx=>tx.patientId===patient.id&&tx.status!=="Anulado"):[],[patient,txs]);
   const productRows=useMemo(()=>patientTxs.filter(tx=>tx.origin==="product-sale"&&Number(tx.quantity)>0),[patientTxs]);
-  const paymentRows=useMemo(()=>patientTxs.filter(tx=>tx.origin==="product-sale"&&Number(tx.quantity)===0&&tx.status!=="Pendiente"),[patientTxs]);
   const productGroups=useMemo(()=>{
     const map=new Map<string,Tx[]>();
     productRows.forEach(tx=>{const key=tx.operationId||String(tx.id),rows=map.get(key)||[];rows.push(tx);map.set(key,rows)});
@@ -90,9 +89,9 @@ export function PatientProductSalesCompat(){
     const nextProducts=products.map(product=>{const line=selected.find(item=>item.productId===product.id);return line?{...product,stock:Number(product.stock)-line.quantity}:product});
     const untouchedProducts=(Array.isArray(store.products)?store.products:[]).filter((p:Product)=>!nextProducts.some(np=>np.id===p.id));
     const allProducts=[...nextProducts,...untouchedProducts];
-    const mainRows:Tx[]=selected.map((line,index)=>{const p=products.find(item=>item.id===line.productId)!,subtotal=p.salePrice*line.quantity;const remaining=status==="Pagada"?0:status==="Pendiente"?subtotal:Math.max(0,subtotal*(1-ratio));return{id:stamp+index+1,concept:"Venta de producto",reference:patient.name,type:"Ingreso",amount:status==="Pagada"?subtotal:remaining,date:nowLabel(),method:status==="Pagada"?method:"Pendiente",status:status==="Pagada"?"Pagado":"Pendiente",origin:"product-sale",operationId,productId:p.id,productName:p.name,patientId:patient.id,quantity:line.quantity,stockDelta:-line.quantity,unitPrice:p.salePrice,unitCost:p.purchaseCost,createdAt,note}});
-    const paidRows:Tx[]=status==="Parcial"?selected.map((line,index)=>{const p=products.find(item=>item.id===line.productId)!,subtotal=p.salePrice*line.quantity,allocation=Math.max(0,subtotal*ratio);return{id:stamp+500+index,concept:"Abono venta de producto",reference:patient.name,type:"Ingreso",amount:allocation,date:nowLabel(),method,status:"Pagado",origin:"product-sale",operationId,productId:p.id,productName:p.name,patientId:patient.id,quantity:0,stockDelta:0,unitPrice:p.salePrice,unitCost:0,createdAt,note}}).filter(row=>row.amount>0):[];
-    const nextTxs=[...paidRows,...mainRows,...txs];
+    const mainRows:Tx[]=selected.map((line,index):Tx=>{const p=products.find(item=>item.id===line.productId)!,subtotal=p.salePrice*line.quantity;const remaining=status==="Pagada"?0:status==="Pendiente"?subtotal:Math.max(0,subtotal*(1-ratio));return{id:stamp+index+1,concept:"Venta de producto",reference:patient.name,type:"Ingreso",amount:status==="Pagada"?subtotal:remaining,date:nowLabel(),method:status==="Pagada"?method:"Pendiente",status:status==="Pagada"?"Pagado":"Pendiente",origin:"product-sale",operationId,productId:p.id,productName:p.name,patientId:patient.id,quantity:line.quantity,stockDelta:-line.quantity,unitPrice:p.salePrice,unitCost:p.purchaseCost,createdAt,note}});
+    const paidRows:Tx[]=status==="Parcial"?selected.map((line,index):Tx=>{const p=products.find(item=>item.id===line.productId)!,subtotal=p.salePrice*line.quantity,allocation=Math.max(0,subtotal*ratio);return{id:stamp+500+index,concept:"Abono venta de producto",reference:patient.name,type:"Ingreso",amount:allocation,date:nowLabel(),method,status:"Pagado",origin:"product-sale",operationId,productId:p.id,productName:p.name,patientId:patient.id,quantity:0,stockDelta:0,unitPrice:p.salePrice,unitCost:0,createdAt,note}}).filter(row=>row.amount>0):[];
+    const nextTxs:Tx[]=[...paidRows,...mainRows,...txs];
     persistOperational({...store,products:allProducts,txs:nextTxs},allProducts,nextTxs);
     setOpen(false);setLines([{productId:0,quantity:1}]);setVersion(v=>v+1);
   };
@@ -102,14 +101,14 @@ export function PatientProductSalesCompat(){
     const form=new FormData(event.currentTarget),amount=Number(form.get("amount"))||0,method=String(form.get("method")||"Efectivo");
     if(amount<=0||amount>pendingProductTotal+0.001){setError("El importe supera el saldo pendiente de productos.");return}
     let remainingPayment=amount;const createdAt=new Date().toISOString(),stamp=Date.now(),newPayments:Tx[]=[];
-    const nextTxs=txs.map(tx=>{
+    const nextTxs:Tx[]=txs.map((tx):Tx=>{
       if(tx.patientId!==patient.id||tx.origin!=="product-sale"||tx.status!=="Pendiente"||Number(tx.amount)<=0||remainingPayment<=0)return tx;
       const applied=Math.min(Number(tx.amount)||0,remainingPayment);remainingPayment-=applied;
       newPayments.push({id:stamp+newPayments.length+1,concept:"Abono venta de producto",reference:patient.name,type:"Ingreso",amount:applied,date:nowLabel(),method,status:"Pagado",origin:"product-sale",operationId:tx.operationId,productId:tx.productId,productName:tx.productName,patientId:patient.id,quantity:0,stockDelta:0,unitPrice:tx.unitPrice,unitCost:0,createdAt});
       const left=Math.max(0,(Number(tx.amount)||0)-applied);
       return left>0?{...tx,amount:left,date:nowLabel(),createdAt}:{...tx,amount:0,status:"Pagado",method,date:nowLabel(),createdAt};
     });
-    const merged=[...newPayments,...nextTxs];
+    const merged:Tx[]=[...newPayments,...nextTxs];
     persistOperational({...store,txs:merged},Array.isArray(store.products)?store.products:[],merged);
     setPaymentOpen(false);setVersion(v=>v+1);
   };
