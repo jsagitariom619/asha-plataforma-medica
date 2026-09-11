@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Manrope } from "next/font/google";
 import { AestheticHistoryCompat } from "@/components/aesthetic-history";
 import { PatientProfileCompat } from "@/components/patient-profile";
+import { PatientProductSalesCompat } from "@/components/patient-product-sales";
 import { ClinicalRecordActionsCompat } from "@/components/clinical-record-actions";
 import { ClinicalUiPunctualFixes } from "@/components/clinical-ui-punctual-fixes";
 import { AppointmentReschedule } from "@/components/appointment-reschedule";
@@ -42,6 +43,7 @@ export default function RootLayout({
         <ClinicalRecordActionsCompat />
         <ClinicalUiPunctualFixes />
         <PatientProfileCompat />
+        <PatientProductSalesCompat />
         <AestheticHistoryCompat />
         <AppointmentReschedule />
         {children}
