@@ -4,9 +4,17 @@ import { readFile } from 'node:fs/promises';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('production layout excludes test reset styling', async () => {
+test('primary admin test reset is temporarily mounted with Supabase safeguards', async () => {
   const layout = await read('app/layout.tsx');
-  assert.equal(layout.includes('test-data-reset.css'), false);
+  const reset = await read('components/test-data-reset.tsx');
+  assert.match(layout, /TestDataReset/);
+  assert.match(layout, /test-data-reset\.css/);
+  assert.match(reset, /BORRAR PRUEBAS/);
+  assert.match(reset, /\/api\/clinic-state/);
+  assert.match(reset, /isPrimaryAdmin/);
+  assert.match(reset, /patients:\[\]/);
+  assert.match(reset, /products:\[\]/);
+  assert.match(reset, /txs:\[\]/);
 });
 
 test('home has neutral dynamic startup values and Supabase session bootstrap', async () => {
